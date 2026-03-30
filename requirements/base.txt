@@ -1,0 +1,5 @@
+django>=5.0,<6.0
+djangorestframework>=3.15
+python-decouple
+psycopg[binary]>=3.1
+dj-database-url
