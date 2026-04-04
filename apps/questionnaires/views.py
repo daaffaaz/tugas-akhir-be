@@ -88,3 +88,45 @@ class UserQuestionnaireView(APIView):
             UserQuestionnaireAnswerSerializer(out, many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def patch(self, request, *args, **kwargs):
+        if not request.user.questionnaire_completed_at:
+            return Response(
+                {'detail': 'Complete the questionnaire via POST before using PATCH.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = AnswerItemSerializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        rows = serializer.validated_data
+        if not rows:
+            raise ValidationError({'detail': 'At least one answer update is required.'})
+
+        qids = [r['question_id'] for r in rows]
+        if len(set(qids)) != len(qids):
+            raise ValidationError({'detail': 'Duplicate question_id in payload.'})
+
+        questions = {q.id: q for q in Question.objects.filter(id__in=qids)}
+        for r in rows:
+            q = questions.get(r['question_id'])
+            if q is None:
+                raise ValidationError({'detail': f'Unknown question_id {r["question_id"]}.'})
+            opt = r['answer_option']
+            if opt not in (q.options_json or {}):
+                raise ValidationError(
+                    {'detail': f'Invalid answer_option {opt!r} for question order {q.order_number}.'},
+                )
+
+        with transaction.atomic():
+            for r in rows:
+                q = questions[r['question_id']]
+                UserQuestionnaireAnswer.objects.update_or_create(
+                    user=request.user,
+                    question=q,
+                    defaults={'answer_option': r['answer_option']},
+                )
+
+        updated = UserQuestionnaireAnswer.objects.filter(user=request.user, question_id__in=qids).select_related(
+            'question'
+        )
+        return Response(UserQuestionnaireAnswerSerializer(updated, many=True).data)
