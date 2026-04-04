@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'apps.users.apps.UsersConfig',
     'apps.questionnaires.apps.QuestionnairesConfig',
     'apps.courses.apps.CoursesConfig',
+    'apps.learning_paths.apps.LearningPathsConfig',
 ]
 
 MIDDLEWARE = [

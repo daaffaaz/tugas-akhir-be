@@ -6,5 +6,6 @@ urlpatterns = [
     path('api/', include('apps.users.urls')),
     path('api/', include('apps.questionnaires.urls')),
     path('api/', include('apps.courses.urls')),
+    path('api/', include('apps.learning_paths.urls')),
     path('api/drf-auth/', include('rest_framework.urls')),
 ]
