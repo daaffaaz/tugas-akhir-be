@@ -5,5 +5,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('apps.users.urls')),
     path('api/', include('apps.questionnaires.urls')),
+    path('api/', include('apps.courses.urls')),
     path('api/drf-auth/', include('rest_framework.urls')),
 ]
