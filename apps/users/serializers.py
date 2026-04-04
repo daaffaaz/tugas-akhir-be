@@ -29,6 +29,26 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'email',
+            'full_name',
+            'avatar_url',
+            'questionnaire_completed_at',
+            'created_at',
+        )
+        read_only_fields = fields
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('full_name', 'avatar_url')
+
+
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Login with email + password (JWT obtain pair)."""
 
