@@ -1,40 +1,62 @@
 # Backend (Django REST API)
 
-Django 5 project with **Django REST Framework** and **PostgreSQL** (configured for **Supabase** via `DATABASE_URL`). Settings are split by environment; domain code lives under `apps/`.
+Django 5 project with **Django REST Framework**, **JWT (SimpleJWT)**, **PostgreSQL** (Supabase via `DATABASE_URL`), and **CORS** for a Next.js frontend. Domain apps live under `apps/`.
 
 ## Project layout
 
 | Path | Purpose |
 |------|--------|
-| `config/` | Django project package: URLs, WSGI/ASGI, and `settings/`. |
-| `config/settings/base.py` | Shared settings (installed apps, middleware, DB from env, DRF). |
-| `config/settings/local.py` | Development defaults (`DEBUG=True`, open `ALLOWED_HOSTS`). |
-| `config/settings/production.py` | Production-only hardening (HTTPS-oriented flags). |
-| `apps/` | Your Django apps. Each app is a package (e.g. `apps.users`). |
-| `apps/users/` | Example app: models, DRF serializers/views, and `urls` mounted under `/api/`. |
-| `requirements/` | Split dependencies: `base.txt`, `local.txt`, `production.txt` (adds `gunicorn`). |
-| `manage.py` | CLI entry; defaults to `config.settings.local`. |
-
-API routes are wired in `config/urls.py`: `/api/` includes `apps.users.urls` (e.g. profiles resource). Admin lives at `/admin/`.
+| `config/` | Django project: URLs, WSGI/ASGI, `settings/`. |
+| `config/settings/base.py` | Shared settings (DB, DRF, JWT, CORS, `AUTH_USER_MODEL`). |
+| `apps/users/` | Custom `User` (UUID), auth (`/api/auth/...`), profile (`/api/users/profile/`). |
+| `apps/questionnaires/` | Questions, user answers, onboarding endpoints. |
+| `apps/courses/` | Platforms, courses, tags, catalog API, `import_courses`. |
+| `apps/learning_paths/` | Learning paths, path courses, bulk update, progress toggle. |
+| `data/` | Sample questionnaire CSV for `import_questions`. |
+| `requirements/` | `base.txt`, `local.txt`, `production.txt`. |
 
 ## Setup
 
-1. Create a virtual environment and install dev deps:
+1. Create a venv and install deps:
 
    ```bash
    python -m venv .venv
-   # Windows: .venv\Scripts\activate
-   # macOS/Linux: source .venv/bin/activate
+   .venv\Scripts\activate   # Windows
    pip install -r requirements/local.txt
    ```
 
-2. Copy environment template and fill in values (especially `DATABASE_URL` from Supabase): `cp .env.example .env` (or `copy .env.example .env` on Windows).
+2. Copy `.env.example` to `.env` and set `SECRET_KEY`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, etc.
 
-3. Apply migrations and run the server:
+3. Migrate, seed questions, import courses (optional), create superuser:
 
    ```bash
    python manage.py migrate
+   python manage.py import_questions --file data/pertanyaan_kuesioner.csv
+   python manage.py import_courses --platform udemy --file path/to/udemy.csv
+   python manage.py import_courses --platform icei --file path/to/icei.csv
+   python manage.py createsuperuser
    python manage.py runserver
    ```
 
-For production, set `DJANGO_SETTINGS_MODULE=config.settings.production`, use `requirements/production.txt`, and set `SECRET_KEY`, `ALLOWED_HOSTS`, and a valid `DATABASE_URL` via the host environment or `.env` (do not commit `.env`).
+## API overview (all under `/api/`)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/auth/register/` | Register; returns `access`, `refresh`. |
+| POST | `/auth/login/` | Body: `email`, `password`. |
+| POST | `/auth/token/refresh/` | Refresh JWT. |
+| GET | `/questions/` | List questionnaire questions. |
+| POST | `/users/questionnaire/` | Submit all answers (JSON array). |
+| PATCH | `/users/questionnaire/` | Partial answer updates (after POST). |
+| GET/PATCH | `/users/profile/` | Profile read/update. |
+| GET | `/courses/` | Catalog: search, filters, pagination. |
+| GET/POST | `/learning-paths/` | List/create paths. |
+| GET | `/learning-paths/<uuid>/` | Path detail + courses. |
+| PUT | `/learning-paths/<uuid>/bulk-update/` | Replace path structure transactionally. |
+| PATCH | `/learning-paths/courses/<uuid>/toggle-complete/` | Toggle completion (`LearningPathCourse` id). |
+
+JWT required for protected routes. Middleware returns `403` if the user is authenticated but has not completed the onboarding questionnaire (except auth, listing questions, and submitting the questionnaire).
+
+Browsable API login (session) for development: `/api/drf-auth/`.
+
+For production, set `DJANGO_SETTINGS_MODULE=config.settings.production` and use `requirements/production.txt`.
