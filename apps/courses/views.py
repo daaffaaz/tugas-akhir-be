@@ -19,5 +19,5 @@ class CourseListView(generics.ListAPIView):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = CourseFilter
     search_fields = ['title', 'description']
-    ordering_fields = ['title', 'price', 'rating', 'review_count', 'duration_hours', 'created_at']
+    ordering_fields = ['title', 'price', 'rating', 'reviews_count', 'video_hours', 'created_at']
     ordering = ['title']

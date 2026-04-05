@@ -7,7 +7,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.courses.models import Course, CourseTag, Platform, Tag
 
@@ -28,10 +28,15 @@ def _parse_rating(value: str):
         return None
 
 
-def _parse_duration_hours(value: str):
+def _parse_decimal_hours(value: str):
     if not value or str(value).strip().upper() in ('N/A', 'NA', ''):
         return None
-    m = re.search(r'([\d.]+)\s*hours?', str(value), re.I)
+    s = str(value).strip()
+    try:
+        return Decimal(s.replace(',', ''))
+    except (InvalidOperation, ValueError):
+        pass
+    m = re.search(r'([\d.]+)\s*hours?', s, re.I)
     if m:
         try:
             return Decimal(m.group(1))
@@ -74,6 +79,26 @@ def _parse_scraped_at(value: str):
         return None
 
 
+def _parse_scraped_date(value: str):
+    if not value or str(value).strip().upper() in ('N/A', 'NA', ''):
+        return None
+    s = str(value).strip()
+    d = parse_date(s)
+    if d:
+        return d
+    dt = parse_datetime(s)
+    if dt:
+        return dt.date() if hasattr(dt, 'date') else None
+    try:
+        return datetime.strptime(s, '%Y-%m-%d %H:%M:%S').date()
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(s, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
 def _udemy_external_id(url: str) -> str:
     m = re.search(r'/course/([^/?#]+)', url or '')
     return m.group(1) if m else (url or '')[:255]
@@ -92,6 +117,14 @@ def _split_tags(raw: str) -> list[str]:
     if not raw or str(raw).strip().upper() in ('N/A', 'NA', ''):
         return []
     return [t.strip() for t in str(raw).split(';') if t.strip()]
+
+
+def _row_text(row: dict, *keys: str) -> str:
+    for k in keys:
+        v = row.get(k)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return ''
 
 
 class Command(BaseCommand):
@@ -154,6 +187,56 @@ class Command(BaseCommand):
             ),
         )
 
+    def _course_defaults_from_row(self, row: dict, url: str, title: str) -> dict:
+        price, currency = _parse_price_currency(row.get('price') or '')
+        reviews_count = _parse_int_commas(row.get('reviews_count') or '')
+        rating = _parse_rating(row.get('rating') or '')
+        duration_raw = _row_text(row, 'duration')
+        video_hours = _parse_decimal_hours(row.get('video_hours') or '')
+        if video_hours is None and duration_raw:
+            video_hours = _parse_decimal_hours(duration_raw)
+        scraped_raw = _row_text(row, 'scraped_date')
+        scraped_at = _parse_scraped_at(scraped_raw)
+        scraped_date = _parse_scraped_date(scraped_raw)
+        if scraped_date is None and scraped_at:
+            scraped_date = scraped_at.date() if isinstance(scraped_at, datetime) else None
+
+        instructor = _row_text(row, 'instructor')
+        if instructor.upper() == 'N/A':
+            instructor = ''
+
+        what_you_learn = row.get('what_you_learn') or ''
+        if str(what_you_learn).strip().upper() == 'N/A':
+            what_you_learn = ''
+
+        desc = row.get('description') or ''
+        if str(desc).strip().upper() == 'N/A':
+            desc = ''
+
+        tag_raw = row.get('tag') or ''
+        if str(tag_raw).strip().upper() == 'N/A':
+            tag_raw = ''
+
+        return {
+            'title': title[:500],
+            'instructor': instructor[:255],
+            'price': price,
+            'reviews_count': reviews_count,
+            'rating': rating,
+            'description': str(desc),
+            'duration': duration_raw,
+            'video_hours': video_hours,
+            'reading_count': _parse_int_commas(row.get('reading_count') or ''),
+            'assignment_count': _parse_int_commas(row.get('assignment_count') or ''),
+            'what_you_learn': str(what_you_learn),
+            'tag': str(tag_raw),
+            'url': url,
+            'scraped_date': scraped_date,
+            'level': (_row_text(row, 'level') or '')[:80],
+            'currency': currency[:3],
+            'scraped_at': scraped_at,
+        }
+
     def _import_udemy_row(self, platform: Platform, row: dict):
         url = (row.get('url') or '').strip()
         external_id = _udemy_external_id(url)
@@ -161,27 +244,7 @@ class Command(BaseCommand):
         if not title or not url:
             return None
 
-        price, currency = _parse_price_currency(row.get('price') or '')
-        reviews_count = _parse_int_commas(row.get('reviews_count') or '')
-        rating = _parse_rating(row.get('rating') or '')
-        duration_hours = _parse_duration_hours(row.get('duration') or '')
-        scraped_at = _parse_scraped_at(row.get('scraped_date') or '')
-        difficulty = (row.get('level') or '').strip()
-
-        defaults = {
-            'title': title[:500],
-            'description': (row.get('description') or '')[:],
-            'url': url,
-            'instructor_name': (row.get('instructor') or '')[:255],
-            'price': price,
-            'currency': currency[:3],
-            'rating': rating,
-            'review_count': reviews_count,
-            'duration_hours': duration_hours,
-            'difficulty_level': difficulty[:80],
-            'scraped_at': scraped_at,
-        }
-
+        defaults = self._course_defaults_from_row(row, url, title)
         course, created = Course.objects.update_or_create(
             platform=platform,
             external_id=external_id,
@@ -191,33 +254,13 @@ class Command(BaseCommand):
         return course, created
 
     def _import_icei_row(self, platform: Platform, row: dict):
-        url = (row.get('link') or '').strip()
+        url = _row_text(row, 'link', 'url')
         external_id = _icei_external_id(url)
         title = (row.get('title') or '').strip()
         if not title or not url:
             return None
 
-        price, currency = _parse_price_currency(row.get('price') or '')
-        reviews_count = _parse_int_commas(row.get('reviews_count') or '')
-        rating = _parse_rating(row.get('rating') or '')
-        duration_hours = _parse_duration_hours(row.get('duration') or '')
-        scraped_at = _parse_scraped_at(row.get('scraped_date') or '')
-        difficulty = (row.get('level') or '').strip()
-
-        defaults = {
-            'title': title[:500],
-            'description': (row.get('description') or '') if (row.get('description') or '').strip().upper() != 'N/A' else '',
-            'url': url,
-            'instructor_name': (row.get('instructor') or '')[:255] if (row.get('instructor') or '').upper() != 'N/A' else '',
-            'price': price,
-            'currency': currency[:3],
-            'rating': rating,
-            'review_count': reviews_count,
-            'duration_hours': duration_hours,
-            'difficulty_level': difficulty[:80],
-            'scraped_at': scraped_at,
-        }
-
+        defaults = self._course_defaults_from_row(row, url, title)
         course, created = Course.objects.update_or_create(
             platform=platform,
             external_id=external_id,

@@ -17,9 +17,9 @@ class CourseTagInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ('title', 'platform', 'price', 'currency', 'rating', 'review_count', 'is_active')
+    list_display = ('title', 'platform', 'price', 'currency', 'rating', 'reviews_count', 'is_active')
     list_filter = ('platform', 'is_active', 'currency')
-    search_fields = ('title', 'external_id', 'instructor_name')
+    search_fields = ('title', 'external_id', 'instructor')
     raw_id_fields = ('platform',)
     inlines = [CourseTagInline]
 

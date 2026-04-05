@@ -31,9 +31,9 @@ Django 5 project with **Django REST Framework**, **JWT (SimpleJWT)**, **PostgreS
 
    ```bash
    python manage.py migrate
-   python manage.py import_questions --file data/pertanyaan_kuesioner.csv
-   python manage.py import_courses --platform udemy --file path/to/udemy.csv
-   python manage.py import_courses --platform icei --file path/to/icei.csv
+   python manage.py import_questions --file "C:\Users\user\Documents\dev\ta scrap\pertanyaan kuesioner.csv"
+   python manage.py import_courses --platform udemy --file "C:\Users\user\Documents\dev\ta scrap\udemy_courses_20260316_140009.csv"
+   python manage.py import_courses --platform icei --file "C:\Users\user\Documents\dev\ta scrap\icei_courses_20260223_153052 - icei_courses_20260223_153052.csv"
    python manage.py createsuperuser
    python manage.py runserver
    ```
