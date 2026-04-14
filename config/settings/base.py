@@ -79,6 +79,8 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
@@ -89,6 +91,7 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:3000',
     cast=Csv(),
 )
+GOOGLE_OAUTH_CLIENT_ID = config('GOOGLE_OAUTH_CLIENT_ID', default='')
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [

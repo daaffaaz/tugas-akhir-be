@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.forms import AdminPasswordChangeForm
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import User
+from .models import User, UserPreferences
 
 
 @admin.register(User)
@@ -31,3 +31,10 @@ class UserAdmin(DjangoUserAdmin):
     )
 
     change_password_form = AdminPasswordChangeForm
+
+
+@admin.register(UserPreferences)
+class UserPreferencesAdmin(admin.ModelAdmin):
+    list_display = ('user', 'target_role', 'main_goal', 'updated_at')
+    search_fields = ('user__email', 'job_title', 'target_role', 'main_goal')
+    raw_id_fields = ('user',)

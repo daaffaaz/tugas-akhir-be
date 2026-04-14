@@ -41,6 +41,8 @@ class QuestionnaireCompletionMiddleware:
             return self.get_response(request)
         if method == 'POST' and path == '/api/users/questionnaire':
             return self.get_response(request)
+        if path in ('/api/users/profile', '/api/users/preferences', '/api/users/avatar'):
+            return self.get_response(request)
 
         return JsonResponse(
             {'detail': 'Complete the onboarding questionnaire before accessing this resource.'},

@@ -1,0 +1,282 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "IT Learning Path API",
+    "description": "Django REST API for IT Learning Path (JWT auth, questionnaire, courses, learning paths).\n\nSet collection variables: `base_url` (e.g. http://localhost:8000), then run **Register** or **Login** and copy `access` / `refresh` into the token variables for protected routes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "learning_path_id", "value": "" },
+    { "key": "learning_path_course_id", "value": "" },
+    { "key": "course_id", "value": "" },
+    { "key": "platform_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"your-secure-password\",\n  \"password_confirm\": \"your-secure-password\",\n  \"full_name\": \"Test User\"\n}"
+            },
+            "url": "{{base_url}}/api/auth/register/",
+            "description": "Creates user; returns `access`, `refresh`, `id`, `email`, `full_name`."
+          }
+        },
+        {
+          "name": "Login (JWT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"your-secure-password\"\n}"
+            },
+            "url": "{{base_url}}/api/auth/login/",
+            "description": "Body uses `email` + `password`. Returns `access` and `refresh` tokens."
+          }
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "url": "{{base_url}}/api/auth/token/refresh/",
+            "description": "Set `refresh_token` variable or paste refresh token from login."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Questionnaire",
+      "item": [
+        {
+          "name": "List questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/questions/",
+            "description": "Public. Returns all questions with `options_json` keys (A, B, …)."
+          }
+        },
+        {
+          "name": "Submit questionnaire (full)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"question_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"answer_option\": \"A\"\n  },\n  {\n    \"question_id\": \"00000000-0000-0000-0000-000000000002\",\n    \"answer_option\": \"B\"\n  }\n]"
+            },
+            "url": "{{base_url}}/api/users/questionnaire/",
+            "description": "JSON array; one entry per question. Replace UUIDs with real `question_id` values from GET /api/questions/. Must match count of questions in DB (e.g. 32)."
+          }
+        },
+        {
+          "name": "Update questionnaire (partial)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"question_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"answer_option\": \"C\"\n  }\n]"
+            },
+            "url": "{{base_url}}/api/users/questionnaire/",
+            "description": "Only after completing onboarding via POST. Partial list of `{question_id, answer_option}`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/users/profile/",
+            "description": "Requires JWT + completed questionnaire (middleware)."
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\",\n  \"avatar_url\": \"https://example.com/avatar.png\"\n}"
+            },
+            "url": "{{base_url}}/api/users/profile/",
+            "description": "Partial update of `full_name` and/or `avatar_url`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Courses",
+      "item": [
+        {
+          "name": "List courses (catalog)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/courses/?page=1&page_size=20",
+            "description": "Optional query params: search, platform (UUID), platform_name (e.g. Udemy), min_price, max_price, min_rating, difficulty_level, min_duration, max_duration, ordering, page, page_size."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Courses (filtered examples)",
+      "item": [
+        {
+          "name": "List courses — search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/courses/?search=python&page=1"
+          }
+        },
+        {
+          "name": "List courses — by platform name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/courses/?platform_name=Udemy&min_rating=4"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Learning paths",
+      "item": [
+        {
+          "name": "List learning paths",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/learning-paths/",
+            "description": "List current user's paths with progress aggregates."
+          }
+        },
+        {
+          "name": "Create learning path",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My Python Path\",\n  \"topic_input\": \"Python backend\",\n  \"description\": \"Optional description\",\n  \"is_saved\": true,\n  \"questionnaire_snapshot\": null\n}"
+            },
+            "url": "{{base_url}}/api/learning-paths/",
+            "description": "Creates an empty path (add courses via bulk-update)."
+          }
+        },
+        {
+          "name": "Get learning path detail",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/learning-paths/{{learning_path_id}}/",
+            "description": "Set `learning_path_id` variable."
+          }
+        },
+        {
+          "name": "Bulk update learning path",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated title\",\n  \"courses\": [\n    {\n      \"course_id\": \"{{course_id}}\",\n      \"position\": 1,\n      \"is_manually_added\": false\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/api/learning-paths/{{learning_path_id}}/bulk-update/",
+            "description": "Replaces path courses: set `course_id` UUIDs from catalog. Positions must be unique."
+          }
+        },
+        {
+          "name": "Toggle course complete (path item)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/api/learning-paths/courses/{{learning_path_course_id}}/toggle-complete/",
+            "description": "`learning_path_course_id` is the `LearningPathCourse` row id (UUID), not the course id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "DRF (dev)",
+      "item": [
+        {
+          "name": "DRF login (session)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/drf-auth/login/",
+            "description": "Browsable API login page (session auth). Not for production API clients."
+          }
+        },
+        {
+          "name": "DRF logout",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/drf-auth/logout/",
+            "description": "Session logout for browsable API."
+          }
+        }
+      ]
+    }
+  ]
+}

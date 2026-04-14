@@ -6,3 +6,6 @@ django-filter>=24.0
 python-decouple
 psycopg[binary]>=3.1
 dj-database-url
+google-auth
+requests
+whitenoise>=6.7

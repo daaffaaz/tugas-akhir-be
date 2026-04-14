@@ -113,6 +113,15 @@ def _icei_external_id(url: str) -> str:
     return url[:255]
 
 
+def _coursera_external_id(url: str) -> str:
+    if not url:
+        return ''
+    m = re.search(r'/learn/([^/?#]+)', url)
+    if m:
+        return m.group(1)[:255]
+    return url[:255]
+
+
 def _split_tags(raw: str) -> list[str]:
     if not raw or str(raw).strip().upper() in ('N/A', 'NA', ''):
         return []
@@ -128,10 +137,10 @@ def _row_text(row: dict, *keys: str) -> str:
 
 
 class Command(BaseCommand):
-    help = 'Import courses from scraped CSV (platform: udemy | icei).'
+    help = 'Import courses from scraped CSV (platform: udemy | icei | coursera).'
 
     def add_arguments(self, parser):
-        parser.add_argument('--platform', type=str, required=True, choices=('udemy', 'icei'))
+        parser.add_argument('--platform', type=str, required=True, choices=('udemy', 'icei', 'coursera'))
         parser.add_argument('--file', type=str, required=True, help='Path to CSV file')
 
     def handle(self, *args, **options):
@@ -148,6 +157,10 @@ class Command(BaseCommand):
             'icei': {
                 'name': 'ICEI',
                 'base_url': 'https://icei.ac.id',
+            },
+            'coursera': {
+                'name': 'Coursera',
+                'base_url': 'https://www.coursera.org',
             },
         }
         pd = platform_defaults[platform_key]
@@ -171,8 +184,10 @@ class Command(BaseCommand):
             for row in rows:
                 if platform_key == 'udemy':
                     res = self._import_udemy_row(platform, row)
-                else:
+                elif platform_key == 'icei':
                     res = self._import_icei_row(platform, row)
+                else:
+                    res = self._import_coursera_row(platform, row)
                 if res is None:
                     continue
                 _course, created = res
@@ -220,7 +235,8 @@ class Command(BaseCommand):
         return {
             'title': title[:500],
             'instructor': instructor[:255],
-            'price': price,
+            # Normalize free/unknown price to 0 so max_price=0 can match free courses.
+            'price': price if price is not None else Decimal('0'),
             'reviews_count': reviews_count,
             'rating': rating,
             'description': str(desc),
@@ -256,6 +272,22 @@ class Command(BaseCommand):
     def _import_icei_row(self, platform: Platform, row: dict):
         url = _row_text(row, 'link', 'url')
         external_id = _icei_external_id(url)
+        title = (row.get('title') or '').strip()
+        if not title or not url:
+            return None
+
+        defaults = self._course_defaults_from_row(row, url, title)
+        course, created = Course.objects.update_or_create(
+            platform=platform,
+            external_id=external_id,
+            defaults=defaults,
+        )
+        self._sync_tags(course, row.get('tag') or '')
+        return course, created
+
+    def _import_coursera_row(self, platform: Platform, row: dict):
+        url = _row_text(row, 'url', 'link')
+        external_id = _coursera_external_id(url)
         title = (row.get('title') or '').strip()
         if not title or not url:
             return None
