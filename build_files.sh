@@ -1,5 +1,5 @@
 #!/bin/bash
 
-pip install -r requirements.txt
+pip install --break-system-packages -r requirements.txt
 
-python manage.py collectstatic --no-input
+DJANGO_SETTINGS_MODULE=config.settings.production python manage.py collectstatic --no-input
