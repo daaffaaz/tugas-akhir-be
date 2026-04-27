@@ -122,10 +122,10 @@ def _coursera_external_id(url: str) -> str:
     return url[:255]
 
 
-def _split_tags(raw: str) -> list[str]:
+def _split_tags(raw: str, delimiter: str = ',') -> list[str]:
     if not raw or str(raw).strip().upper() in ('N/A', 'NA', ''):
         return []
-    return [t.strip() for t in str(raw).split(';') if t.strip()]
+    return [t.strip() for t in str(raw).split(delimiter) if t.strip()]
 
 
 def _row_text(row: dict, *keys: str) -> str:
@@ -202,10 +202,14 @@ class Command(BaseCommand):
             ),
         )
 
-    def _course_defaults_from_row(self, row: dict, url: str, title: str) -> dict:
+    def _course_defaults_from_row(self, row: dict, url: str, title: str, rating_default: str = '4.5') -> dict:
         price, currency = _parse_price_currency(row.get('price') or '')
         reviews_count = _parse_int_commas(row.get('reviews_count') or '')
-        rating = _parse_rating(row.get('rating') or '')
+        rating_raw = str(row.get('rating') or '').strip()
+        if rating_default is None:
+            rating = _parse_rating(rating_raw)
+        else:
+            rating = _parse_rating(rating_raw) if rating_raw.upper() not in ('N/A', 'NA', '') else Decimal(rating_default)
         duration_raw = _row_text(row, 'duration')
         video_hours = _parse_decimal_hours(row.get('video_hours') or '')
         if video_hours is None and duration_raw:
@@ -260,13 +264,13 @@ class Command(BaseCommand):
         if not title or not url:
             return None
 
-        defaults = self._course_defaults_from_row(row, url, title)
+        defaults = self._course_defaults_from_row(row, url, title, rating_default=None)
         course, created = Course.objects.update_or_create(
             platform=platform,
             external_id=external_id,
             defaults=defaults,
         )
-        self._sync_tags(course, row.get('tag') or '')
+        self._sync_tags(course, row.get('tag') or '', delimiter=',')
         return course, created
 
     def _import_icei_row(self, platform: Platform, row: dict):
@@ -276,7 +280,7 @@ class Command(BaseCommand):
         if not title or not url:
             return None
 
-        defaults = self._course_defaults_from_row(row, url, title)
+        defaults = self._course_defaults_from_row(row, url, title, rating_default=None)
         course, created = Course.objects.update_or_create(
             platform=platform,
             external_id=external_id,
@@ -298,11 +302,11 @@ class Command(BaseCommand):
             external_id=external_id,
             defaults=defaults,
         )
-        self._sync_tags(course, row.get('tag') or '')
+        self._sync_tags(course, row.get('tag') or '', delimiter=',')
         return course, created
 
-    def _sync_tags(self, course: Course, tag_raw: str):
-        names = _split_tags(tag_raw)
+    def _sync_tags(self, course: Course, tag_raw: str, delimiter: str = ';'):
+        names = _split_tags(tag_raw, delimiter=delimiter)
         CourseTag.objects.filter(course=course).delete()
         for name in names:
             tag, _ = Tag.objects.get_or_create(name=name[:120])
