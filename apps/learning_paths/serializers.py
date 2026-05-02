@@ -54,6 +54,10 @@ class LearningPathCourseItemSerializer(serializers.ModelSerializer):
             'is_completed',
             'completed_at',
             'is_manually_added',
+            'replaced_by',
+            'replacement_reason',
+            'replacement_context',
+            'regenerate_version',
         )
 
 
@@ -70,6 +74,8 @@ class LearningPathDetailSerializer(serializers.ModelSerializer):
             'description',
             'is_saved',
             'questionnaire_snapshot',
+            'regenerate_count',
+            'regenerate_context',
             'progress_percentage',
             'courses',
             'created_at',

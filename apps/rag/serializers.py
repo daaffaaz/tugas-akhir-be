@@ -143,3 +143,142 @@ class CourseRecommendationListSerializer(serializers.ModelSerializer):
 class CourseRecommendationUpdateSerializer(serializers.Serializer):
     """Serializer for PATCH /api/rag/recommendations/{id}/."""
     is_saved = serializers.BooleanField(required=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Learning Path Regenerate Serializers
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LearningPathRegenerateRequestSerializer(serializers.Serializer):
+    """Serializer for POST /api/rag/learning-paths/{id}/regenerate/."""
+    additional_context = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text='Konteks tambahan untuk regenerate seluruh learning path.'
+    )
+    # Override options (partial regeneration)
+    keep_courses = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text='Jika True, mencoba preserve courses yang sudah ditandai selesai.'
+    )
+
+    def validate_additional_context(self, value):
+        if value and len(value.strip()) < 5:
+            raise serializers.ValidationError(
+                "Konteks tambahan minimal 5 karakter jika diberikan."
+            )
+        return value.strip() if value else ''
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Learning Path Course Replace Serializers
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LearningPathReplaceCourseRequestSerializer(serializers.Serializer):
+    """Serializer for POST /api/rag/learning-paths/{id}/courses/{course_id}/replace/."""
+    additional_context = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text='Alasan/harapan user untuk course pengganti.'
+    )
+    count = serializers.IntegerField(
+        required=False,
+        default=5,
+        min_value=3,
+        max_value=20,
+        help_text='Jumlah kandidat course pengganti (default 5, max 20)'
+    )
+
+    def validate_additional_context(self, value):
+        if value and len(value.strip()) < 3:
+            raise serializers.ValidationError(
+                "Konteks minimal 3 karakter jika diberikan."
+            )
+        return value.strip() if value else ''
+
+
+class ReplacementCandidateSerializer(serializers.Serializer):
+    """Single candidate course in replacement response."""
+    course_id = serializers.UUIDField()
+    title = serializers.CharField()
+    instructor = serializers.CharField()
+    platform = serializers.CharField()
+    level = serializers.CharField()
+    rating = serializers.FloatField(allow_null=True)
+    price = serializers.FloatField(allow_null=True)
+    currency = serializers.CharField()
+    duration = serializers.CharField()
+    thumbnail_url = serializers.CharField(allow_blank=True)
+    url = serializers.CharField(allow_blank=True)
+    # AI evaluation
+    score = serializers.FloatField()
+    faiss_score = serializers.FloatField()
+    match_reason = serializers.CharField()
+    best_for = serializers.CharField()
+    potential_concerns = serializers.CharField()
+
+
+class LearningPathReplaceCourseResponseSerializer(serializers.Serializer):
+    """Serializer for replacement search response."""
+    original_course_id = serializers.UUIDField()
+    original_course_title = serializers.CharField()
+    replacement_reason_summary = serializers.CharField()
+    candidates = ReplacementCandidateSerializer(many=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Learning Path Course Add / Similar Serializers
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SimilarCourseSerializer(serializers.Serializer):
+    """Serializer for similar course candidates."""
+    course_id = serializers.UUIDField()
+    title = serializers.CharField()
+    instructor = serializers.CharField(allow_null=True)
+    platform = serializers.CharField()
+    level = serializers.CharField(allow_blank=True)
+    rating = serializers.FloatField(allow_null=True)
+    reviews_count = serializers.IntegerField(allow_null=True)
+    price = serializers.FloatField(allow_null=True)
+    currency = serializers.CharField()
+    duration = serializers.CharField(allow_blank=True)
+    thumbnail_url = serializers.CharField(allow_blank=True)
+    url = serializers.CharField(allow_blank=True)
+    relevance_score = serializers.FloatField()
+    faiss_score = serializers.FloatField()
+
+
+class SimilarCoursesResponseSerializer(serializers.Serializer):
+    """Serializer for GET /api/rag/learning-paths/{id}/courses/{course_id}/similar/."""
+    original_course_id = serializers.UUIDField()
+    original_course_title = serializers.CharField()
+    topic = serializers.CharField()
+    courses = SimilarCourseSerializer(many=True)
+
+
+class LearningPathAddCourseRequestSerializer(serializers.Serializer):
+    """Serializer for POST /api/rag/learning-paths/{id}/courses/add/."""
+    course_id = serializers.UUIDField(
+        help_text='UUID dari course yang mau ditambahkan'
+    )
+    position = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        help_text='Posisi insertion (default: append di akhir).'
+    )
+
+
+class LearningPathApplyReplacementRequestSerializer(serializers.Serializer):
+    """Serializer for POST /api/rag/learning-paths/{id}/courses/{course_id}/apply/."""
+    new_course_id = serializers.UUIDField(
+        help_text='UUID dari course pengganti'
+    )
+    replacement_reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500,
+        help_text='Alasan user mengganti course ini'
+    )

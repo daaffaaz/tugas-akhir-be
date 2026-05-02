@@ -67,6 +67,13 @@ class LearningPath(models.Model):
     description = models.TextField(blank=True)
     is_saved = models.BooleanField(default=False)
     questionnaire_snapshot = models.JSONField(null=True, blank=True)
+    # Regenerate tracking
+    regenerate_count = models.PositiveSmallIntegerField(default=0)
+    regenerate_context = models.TextField(
+        blank=True,
+        default='',
+        help_text='Additional context used in last regenerate'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -95,6 +102,30 @@ class LearningPathCourse(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     is_manually_added = models.BooleanField(default=False)
     added_at = models.DateTimeField(auto_now_add=True)
+    # Replacement tracking
+    replaced_by = models.ForeignKey(
+        'courses.Course',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='replaced_courses',
+        help_text='If this course was replaced, reference the new course here'
+    )
+    replacement_reason = models.TextField(
+        blank=True,
+        default='',
+        help_text='User-provided reason for replacing this course'
+    )
+    replacement_context = models.TextField(
+        blank=True,
+        default='',
+        help_text='AI context used to find replacement course'
+    )
+    # Regenerate tracking (if this course was part of a roadmap regenerate)
+    regenerate_version = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='LearningPath.regenerate_count at time this course was added'
+    )
 
     class Meta:
         db_table = 'learning_path_courses'
