@@ -591,22 +591,287 @@ interface Phase {
 
 ## 6. API Integration Summary
 
-### 6.1 Endpoints
+### 6.1 Base URL
 
-| Method | Endpoint | Auth | Body | Response |
+```
+Development:  http://localhost:8000/api
+Production:   https://api.adacode.ai/api
+```
+
+All endpoints di bawah ini menggunakan base URL di atas.
+
+### 6.2 Endpoints
+
+| Method | Full URL | Auth | Body | Response |
 |--------|----------|------|------|-----------|
-| POST | `/api/rag/recommend/` | JWT | `{topic, additional_context?, count?, regenerate?}` | `201 + RAGRecommendResponse` |
-| GET | `/api/rag/recommendations/` | JWT | `?topic=&is_saved=&page=&page_size=` | `200 + paginated list` |
-| PATCH | `/api/rag/recommendations/{id}/` | JWT | `{is_saved: bool}` | `200 + updated rec` |
-| POST | `/api/rag/generate-roadmap/` | JWT | `{topic, count?}` | `201 + LearningPathDetailSerializer` |
+| POST | `{BASE}/rag/recommend/` | JWT | `{topic, additional_context?, count?, regenerate?}` | `201 + RAGRecommendResponse` |
+| GET | `{BASE}/rag/recommendations/` | JWT | `?topic=&is_saved=&page=&page_size=` | `200 + paginated list` |
+| PATCH | `{BASE}/rag/recommendations/{{id}}/` | JWT | `{is_saved: bool}` | `200 + updated rec` |
+| POST | `{BASE}/rag/generate-roadmap/` | JWT | `{topic, count?}` | `201 + LearningPathDetailSerializer` |
 
-### 6.2 Auth Header
+**Contoh full URL:**
+```
+POST http://localhost:8000/api/rag/recommend/
+POST https://api.adacode.ai/api/rag/generate-roadmap/
+```
+
+### 6.3 Existing Learning Path Endpoints
+
+Jika frontend perlu operasi tambahan pada learning path (selain generate baru), endpoint berikut sudah ada:
+
+| Method | Full URL | Auth | Body | Response | Notes |
+|--------|----------|------|------|---------|-------|
+| GET | `{BASE}/learning-paths/` | JWT | — | `200 + paginated list` | List semua learning path user |
+| GET | `{BASE}/learning-paths/{uuid}/` | JWT | — | `200 + detail` | Detail satu learning path |
+| PATCH | `{BASE}/learning-paths/{uuid}/bulk-update/` | JWT | `{courses: [{course_id, position}]}` | `200 + updated` | Reorder courses |
+| POST | `{BASE}/learning-paths/courses/{uuid}/toggle-complete/` | JWT | — | `200 + {is_completed}` | Toggle course completion |
+
+### 6.4 Full API Summary
+
+| # | Method | Full URL | Auth | Body | Response |
+|---|--------|----------|------|------|---------|---------|
+| 1 | POST | `{BASE}/rag/recommend/` | JWT | `{topic, additional_context?, count?, regenerate?}` | `201` | Generate course recommendations |
+| 2 | GET | `{BASE}/rag/recommendations/` | JWT | `?topic=&is_saved=&page=&page_size=` | `200` | List saved recommendations |
+| 3 | PATCH | `{BASE}/rag/recommendations/{id}/` | JWT | `{is_saved: bool}` | `200` | Toggle saved status |
+| 4 | POST | `{BASE}/rag/generate-roadmap/` | JWT | `{topic, count?}` | `201` | Generate learning path |
+| 5 | GET | `{BASE}/learning-paths/` | JWT | — | `200` | List user's saved paths |
+| 6 | GET | `{BASE}/learning-paths/{uuid}/` | JWT | — | `200` | Get path detail |
+| 7 | PATCH | `{BASE}/learning-paths/{uuid}/bulk-update/` | JWT | `{courses}` | `200` | Reorder courses in path |
+| 8 | POST | `{BASE}/learning-paths/courses/{uuid}/toggle-complete/` | JWT | — | `200` | Mark course complete/incomplete |
+
+### 6.5 Auth Header
 
 ```
 Authorization: Bearer <jwt_access_token>
 ```
 
-### 6.3 Questionnaire Guard
+### 6.6 Questionnaire Guard
+
+Both RAG endpoints (`/rag/recommend/` dan `/rag/generate-roadmap/`) return `403` jika user belum complete questionnaire.
+
+Frontend harus menangani dengan:
+
+```
+HTTP 403 → {"detail": "Complete the onboarding questionnaire before accessing this resource."}
+→ Show full-screen CTA: "Selesaikan Kuesioner" → redirect ke /onboarding/questionnaire
+```
+
+---
+
+### 6.7 Request & Response Examples
+
+#### AI #1 — Course Recommendation
+
+**POST /api/rag/recommend/ (fresh recommend)**
+
+Request:
+```json
+{
+  "topic": "machine learning untuk data science",
+  "count": 5
+}
+```
+
+Response 201:
+```json
+{
+  "recommendations": [
+    {
+      "id": "rec-uuid-1",
+      "course_obj": {
+        "id": "course-uuid-1",
+        "title": "Machine Learning with Python",
+        "instructor": "IBM",
+        "rating": "4.5",
+        "reviews_count": 1234,
+        "price": "570000.00",
+        "currency": "IDR",
+        "level": "Intermediate",
+        "duration": "2 weeks at 10 hours a week",
+        "video_hours": "133.00",
+        "thumbnail_url": "https://...",
+        "url": "https://www.coursera.org/..."
+      },
+      "relevance_score": 0.4725,
+      "ai_explanation": "This course is intermediate level and requires...",
+      "match_score": 0.8,
+      "best_for": "Intermediate learners with more time and budget",
+      "potential_gaps": "Not suitable for beginners...",
+      "is_saved": false,
+      "regenerate_count": 0,
+      "created_at": "2026-05-02T12:00:00+00:00"
+    },
+    // ... 4 more recommendations
+  ],
+  "topic": "machine learning untuk data science",
+  "total_retrieved": 3,
+  "top_similarity_score": 0.473,
+  "regenerate": false,
+  "regenerate_count": 0
+}
+```
+
+**POST /api/rag/recommend/ (regenerate with context)**
+
+Request:
+```json
+{
+  "topic": "machine learning untuk data science",
+  "additional_context": "saya mau career switch ke data analyst, budget Rp 500rb, lebih suka kursus hands-on",
+  "regenerate": true,
+  "count": 5
+}
+```
+
+Response 201:
+```json
+{
+  "recommendations": [
+    {
+      "id": "rec-uuid-1",
+      // ... same fields as above ...
+      "ai_explanation": "This course is intermediate level... now explanation mentions career switch...",
+      "regenerate_count": 1
+      // ↑ incremented!
+    },
+    // ...
+  ],
+  "regenerate": true,
+  "regenerate_count": 1
+}
+```
+
+**PATCH /api/rag/recommendations/{id}/ (toggle saved)**
+
+Request:
+```json
+{
+  "is_saved": true
+}
+```
+
+Response 200:
+```json
+{
+  "id": "rec-uuid-1",
+  "is_saved": true,
+  // ... other fields
+}
+```
+
+---
+
+#### AI #2 — Learning Path Generation
+
+**POST /api/rag/generate-roadmap/**
+
+Request:
+```json
+{
+  "topic": "web development dari nol",
+  "count": 15
+}
+```
+
+Response 201:
+```json
+{
+  "id": "lp-uuid-1",
+  "title": "Web Development from Scratch: A Beginner's Journey",
+  "topic_input": "web development dari nol",
+  "description": "...",
+  "is_saved": false,
+  "progress_percentage": 0.0,
+  "courses": [
+    {
+      "id": "lpc-uuid-1",
+      "course": {
+        "id": "course-uuid-1",
+        "title": "Introduction to HTML, CSS, & JavaScript",
+        "instructor": "",
+        "rating": "4.4",
+        "level": "Beginner",
+        "video_hours": "123.00",
+        "price": "570000.00",
+        "currency": "IDR",
+        "url": "https://www.coursera.org/...",
+        "thumbnail_url": "https://..."
+      },
+      "position": 1,
+      "is_completed": false,
+      "completed_at": null,
+      "is_manually_added": false
+    },
+    {
+      "id": "lpc-uuid-2",
+      "course": {
+        "title": "Developing Front-End Apps with React",
+        // ... course detail
+      },
+      "position": 2,
+      "is_completed": false,
+      // ...
+    }
+  ],
+  "created_at": "2026-05-02T12:00:00Z",
+  "updated_at": "2026-05-02T12:00:00Z",
+  "_rag_meta": {
+    "courses_retrieved": 15,
+    "top_similarity_score": 0.422,
+    "retrieval_method": "semantic vector search + tag-based ordering"
+  },
+  "questionnaire_snapshot": {
+    "roadmap_title": "Web Development from Scratch: A Beginner's Journey",
+    "total_duration_weeks": 24,
+    "total_hours_estimated": 270,
+    "difficulty_curve": "beginner-friendly / progressive",
+    "overview": "This roadmap is designed...",
+    "target_skills": ["HTML", "CSS", "JavaScript", "React", "Front-End Development"],
+    "phases": [
+      {
+        "phase_number": 1,
+        "phase_name": "Foundation in Web Development",
+        "phase_reason": "This phase introduces the essential building blocks of web development: HTML, CSS, and JavaScript...",
+        "duration_weeks": 12,
+        "learning_objectives": ["Understand HTML, CSS, JS basics", "Build simple web pages"],
+        "courses": [
+          {
+            "course_id": "course-uuid-1",
+            "title": "Introduction to HTML, CSS, & JavaScript",
+            "match_reason": "Covers the fundamental technologies..."
+          }
+        ],
+        "milestones": ["Create basic webpage", "Style a webpage with CSS"],
+        "practice_projects": ["Build personal portfolio webpage"],
+        "skill_progress": {
+          "skills_gained": ["HTML", "CSS", "JavaScript"],
+          "skill_coverage": 0.3
+        },
+        "transition_to_next": "Having learned the basics of HTML, CSS, and JavaScript, you are now ready to explore more complex front-end frameworks like React..."
+      },
+      {
+        "phase_number": 2,
+        "phase_name": "Advanced Front-End Development",
+        "phase_reason": "This phase focuses on enhancing your front-end development skills by introducing React...",
+        "duration_weeks": 12,
+        "learning_objectives": ["Learn React basics", "Build interactive UIs"],
+        "courses": [
+          {
+            "course_id": "course-uuid-2",
+            "title": "Developing Front-End Apps with React",
+            "match_reason": "Builds on your JavaScript knowledge..."
+          }
+        ],
+        "transition_to_next": null
+      }
+    ],
+    "tips_for_success": ["Practice coding daily", "Build projects regularly"],
+    "next_steps_after_roadmap": ["Explore back-end development with Node.js"]
+  }
+}
+```
+
+---
 
 Both endpoints return `403` if user has `questionnaire_completed_at = null`.
 Frontend must handle this by redirecting to questionnaire screen.
