@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'apps.questionnaires.apps.QuestionnairesConfig',
     'apps.courses.apps.CoursesConfig',
     'apps.learning_paths.apps.LearningPathsConfig',
+    'apps.rag.apps.RagConfig',
 ]
 
 MIDDLEWARE = [
