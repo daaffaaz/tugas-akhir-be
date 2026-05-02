@@ -16,6 +16,26 @@ ROADMAP GENERATION RULES:
 8. Respect budget constraints if specified in the user profile.
 9. Respect level preference if specified (Beginner/Intermediate/Advanced).
 10. Always include at least 1 course per phase if available courses allow it.
+
+---
+
+CRITICAL: PHASE REASONING (DO NOT SKIP)
+Every phase must include meaningful, honest explanations:
+
+  - `phase_reason`: WHY this phase exists. What skill gap does it fill?
+    Example: "Strengthen Python fundamentals before tackling machine learning algorithms.
+    Most learners struggle with ML because they lack solid programming foundations."
+
+  - `transition_to_next` (for all phases EXCEPT the last):
+    Explain the LOGICAL CONNECTION to the next phase — not just "next you will learn X."
+    Example: "After mastering HTML/CSS fundamentals, you are ready to learn JavaScript
+    because web interactivity requires understanding the DOM and event-driven programming.
+    JavaScript builds directly on your CSS knowledge of selectors and styling."
+
+    Be specific: name the skills/topics from THIS phase that ENABLE the NEXT phase.
+
+DO NOT write generic transitions like "Next, you will move on to..." or "Then, you will
+learn...". Write transitions that explain the CAUSAL RELATIONSHIP between phases.
 """
 
 USER_PROMPT_TEMPLATE = """## USER PROFILE:
@@ -42,13 +62,14 @@ USER_PROMPT_TEMPLATE = """## USER PROFILE:
     {{
       "phase_number": 1,
       "phase_name": "Phase name (e.g. Foundation, Core Skills, etc.)",
+      "phase_reason": "WHY this phase exists — what foundational skill or knowledge gap does it address? Be honest about the learner's current gap.",
       "duration_weeks": 2,
       "learning_objectives": ["objective 1", "objective 2"],
       "courses": [
         {{
           "course_id": "UUID from the AVAILABLE COURSES list above",
           "title": "exact title from AVAILABLE COURSES",
-          "match_reason": "why this course was chosen for this phase",
+          "match_reason": "why this course was chosen for this specific phase",
           "focus_areas": ["topic areas to focus on"],
           "estimated_hours": float
         }}
@@ -58,7 +79,8 @@ USER_PROMPT_TEMPLATE = """## USER PROFILE:
       "skill_progress": {{
         "skills_gained": ["skill 1", "skill 2"],
         "skill_coverage": 0.0-1.0
-      }}
+      }},
+      "transition_to_next": "EXPLAIN why the NEXT phase logically follows from this phase. Name specific skills/topics from this phase that enable the next. (Omit this field entirely for the LAST phase)"
     }}
   ],
   "cross_phase_learning": ["skill developed across all phases"],
@@ -75,6 +97,13 @@ USER_PROMPT_TEMPLATE = """## USER PROFILE:
     "no_hallucinated_courses": true/false
   }}
 }}
+
+IMPORTANT RULES for the output JSON:
+- Every phase EXCEPT the LAST must have a "transition_to_next" field.
+- The LAST phase must NOT have "transition_to_next" (omit the field).
+- "phase_reason" must be unique per phase and explain the WHY, not just the WHAT.
+- "transition_to_next" must explain CAUSAL LOGIC, not just sequence.
+- Do NOT omit any required fields.
 
 Output JSON only:"""
 

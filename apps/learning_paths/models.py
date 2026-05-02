@@ -4,6 +4,57 @@ from django.conf import settings
 from django.db import models
 
 
+class CourseRecommendation(models.Model):
+    """
+    Hasil rekomendasi course tunggal per user.
+    Disimpan agar user bisa lihat ulang history & toggle saved.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='course_recommendations',
+    )
+    course = models.ForeignKey(
+        'courses.Course',
+        on_delete=models.CASCADE,
+        related_name='recommendations_received',
+    )
+    topic_input = models.CharField(max_length=255, blank=True)
+    additional_context = models.TextField(blank=True, default='')
+    relevance_score = models.FloatField(
+        default=0.0,
+        help_text='Cosine similarity score dari FAISS (0.0–1.0)'
+    )
+    ai_explanation = models.TextField(
+        blank=True,
+        default='',
+        help_text='Penjelasan AI kenapa course ini cocok untuk user'
+    )
+    is_saved = models.BooleanField(
+        default=False,
+        help_text='User menandai ingin menyimpan course ini'
+    )
+    regenerate_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='Jumlah kali user regenerate rekomendasi ini'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'course_recommendations'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'course', 'topic_input'],
+                name='uniq_user_course_topic',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Rec: {self.user_id} → {self.course_id} ({self.topic_input})"
+
+
 class LearningPath(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(

@@ -10,14 +10,20 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.courses.models import Course
-from apps.learning_paths.models import LearningPath, LearningPathCourse
+from apps.learning_paths.models import CourseRecommendation, LearningPath, LearningPathCourse
 from apps.learning_paths.serializers import LearningPathDetailSerializer
 from apps.questionnaires.models import Question, UserQuestionnaireAnswer
 from apps.users.models import UserPreferences
 
 from .generator import generate_roadmap
+from .recommend_generator import generate_recommendations
 from .retriever import retrieve_courses
-from .serializers import RAGGenerateRequestSerializer
+from .serializers import (
+    CourseRecommendationListSerializer,
+    CourseRecommendationUpdateSerializer,
+    RAGGenerateRequestSerializer,
+    RAGRecommendRequestSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +34,19 @@ def _build_user_profile(user, topic: str) -> dict:
     Used as context for the RAG prompt.
     """
     try:
-        prefs = user.userpreferences
+        prefs = user.preferences  # related_name='preferences' di UserPreferences FK
         profile = {
             'current_skills': [],
             'goals': [],
             'level': '',
-            'budget': int(prefs.budget_idr) if prefs.budget_idr else None,
-            'weekly_hours': int(prefs.weekly_hours) if prefs.weekly_hours else None,
+            'budget': prefs.budget_idr if prefs.budget_idr else None,
+            'weekly_hours': prefs.weekly_hours or None,
             'material_format': prefs.material_format or '',
             'theory_practice': prefs.theory_practice or '',
             'target_role': prefs.target_role or '',
             'main_goal': prefs.main_goal or '',
         }
-    except UserPreferences.DoesNotExist:
+    except (UserPreferences.DoesNotExist, AttributeError):
         profile = {
             'current_skills': [],
             'goals': [],
@@ -229,3 +235,286 @@ class RAGRoadmapGenerateView(APIView):
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Course Recommendation Views
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RAGCourseRecommendView(APIView):
+    """
+    POST /api/rag/recommend/
+    Generate personalized course recommendations (with AI explanations).
+
+    Jika regenerate=True, wajib isi additional_context.
+    Hasil regenerate akan menimpa record lama (update) dan increment regenerate_count.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = RAGRecommendRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        topic = data['topic']
+        additional_context = data.get('additional_context', '')
+        count = data.get('count', 5)
+        regenerate = data.get('regenerate', False)
+
+        logger.info(
+            f"[RAG] Recommend count={count} topic='{topic}' "
+            f"regenerate={regenerate} by user={request.user.id}"
+        )
+
+        # Build user profile from DB
+        user_profile = _build_user_profile(request.user, topic)
+        if additional_context:
+            user_profile['additional_context'] = additional_context
+
+        # Retrieve top courses from FAISS
+        courses, top_score = retrieve_courses(topic, user_profile, top_k=max(count, 20))
+
+        if not courses:
+            return Response(
+                {'detail': 'No courses found for this topic. Try a different query.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Limit to requested count
+        courses = courses[:count]
+
+        # Generate per-course AI explanations
+        try:
+            enriched = generate_recommendations(
+                topic=topic,
+                user_profile=user_profile,
+                courses_metadata=courses,
+            )
+        except Exception as e:
+            logger.warning(f"[RAG] AI explanation generation failed: {e}, falling back to raw courses")
+            enriched = []
+            for c in courses:
+                result = dict(c)
+                result['relevance_score'] = c.get('_score', 0.0)
+                result['ai_explanation'] = 'Penjelasan tidak tersedia.'
+                result['match_score'] = 0.5
+                result['best_for'] = 'General learners'
+                result['potential_gaps'] = ''
+                enriched.append(result)
+
+        # Save to DB (upsert — overwrite on regenerate)
+        try:
+            saved_recommendations = _save_recommendations_to_db(
+                user=request.user,
+                topic=topic,
+                additional_context=additional_context,
+                enriched_courses=enriched,
+                regenerate=regenerate,
+            )
+        except Exception as e:
+            logger.error(f"[RAG] Failed to save recommendations to DB: {e}")
+            return Response(
+                {'detail': f'Failed to save recommendations: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Build response
+        response_data = {
+            'recommendations': saved_recommendations,
+            'topic': topic,
+            'total_retrieved': len(enriched),
+            'top_similarity_score': float(top_score),
+            'regenerate': regenerate,
+            'regenerate_count': max(
+                (r.get('regenerate_count') or 0) for r in saved_recommendations
+            ) if regenerate else 0,
+        }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+class RAGRecommendationListView(APIView):
+    """
+    GET  /api/rag/recommendations/  — list all saved recommendations for current user
+    PATCH /api/rag/recommendations/{id}/ — update is_saved status
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        topic = request.query_params.get('topic', '')
+        is_saved = request.query_params.get('is_saved')
+
+        qs = (
+            CourseRecommendation.objects
+            .filter(user=request.user)
+            .select_related('course__platform')
+            .prefetch_related('course__tags')
+        )
+
+        if topic:
+            qs = qs.filter(topic_input__icontains=topic)
+
+        if is_saved is not None:
+            qs = qs.filter(is_saved=is_saved.lower() == 'true')
+
+        qs = qs.order_by('-created_at')
+
+        # Simple pagination
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 10))
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        total = qs.count()
+        items = qs[start:end]
+        serializer = CourseRecommendationListSerializer(items, many=True)
+
+        return Response({
+            'results': serializer.data,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total + page_size - 1) // page_size,
+        })
+
+    def patch(self, request, pk):
+        serializer = CourseRecommendationUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            rec = CourseRecommendation.objects.get(pk=pk, user=request.user)
+        except CourseRecommendation.DoesNotExist:
+            return Response(
+                {'detail': 'Recommendation not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        rec.is_saved = serializer.validated_data['is_saved']
+        rec.save(update_fields=['is_saved'])
+
+        return Response(CourseRecommendationListSerializer(rec).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _save_recommendations_to_db(
+    user,
+    topic: str,
+    additional_context: str,
+    enriched_courses: list[dict],
+    regenerate: bool = False,
+) -> list[dict]:
+    """
+    Save/upsert CourseRecommendation records and return serialized data
+    ready for response serialization.
+
+    On regenerate=True: increment regenerate_count, preserve is_saved, overwrite
+    ai_explanation & additional_context with new generation.
+    """
+    saved = []
+
+    with transaction.atomic():
+        for item in enriched_courses:
+            course_id = item.get('course_id')
+            if not course_id:
+                continue
+
+            if not Course.objects.filter(id=course_id).exists():
+                continue
+
+            if regenerate:
+                # Preserve is_saved; increment regenerate_count
+                existing = CourseRecommendation.objects.filter(
+                    user=user,
+                    course_id=course_id,
+                    topic_input=topic,
+                ).first()
+
+                if existing:
+                    existing.additional_context = additional_context
+                    existing.relevance_score = item.get('relevance_score', 0.0)
+                    existing.ai_explanation = item.get('ai_explanation', '')
+                    existing.regenerate_count = existing.regenerate_count + 1
+                    existing.save(
+                        update_fields=[
+                            'additional_context', 'relevance_score',
+                            'ai_explanation', 'regenerate_count',
+                        ],
+                    )
+                    rec = (
+                        CourseRecommendation.objects
+                        .filter(id=existing.id)
+                        .select_related('course__platform')
+                        .prefetch_related('course__tags')
+                        .first()
+                    )
+                else:
+                    # No existing record — create new one
+                    rec = CourseRecommendation.objects.create(
+                        user=user,
+                        course_id=course_id,
+                        topic_input=topic,
+                        additional_context=additional_context,
+                        relevance_score=item.get('relevance_score', 0.0),
+                        ai_explanation=item.get('ai_explanation', ''),
+                        regenerate_count=0,
+                    )
+                    rec = (
+                        CourseRecommendation.objects
+                        .filter(id=rec.id)
+                        .select_related('course__platform')
+                        .prefetch_related('course__tags')
+                        .first()
+                    )
+            else:
+                # Fresh recommendation — upsert as before (is_saved stays False)
+                rec, _ = CourseRecommendation.objects.update_or_create(
+                    user=user,
+                    course_id=course_id,
+                    topic_input=topic,
+                    defaults={
+                        'additional_context': additional_context,
+                        'relevance_score': item.get('relevance_score', 0.0),
+                        'ai_explanation': item.get('ai_explanation', ''),
+                        'is_saved': False,
+                        'regenerate_count': 0,
+                    },
+                )
+                rec = (
+                    CourseRecommendation.objects
+                    .filter(id=rec.id)
+                    .select_related('course__platform')
+                    .prefetch_related('course__tags')
+                    .first()
+                )
+
+            saved.append({
+                'id': str(rec.id),
+                # Store plain dict so REST Framework JSON renderer can serialize it
+                'course_obj': {
+                    'id': rec.course.id,
+                    'title': rec.course.title,
+                    'instructor': rec.course.instructor,
+                    'rating': rec.course.rating,
+                    'reviews_count': rec.course.reviews_count,
+                    'price': rec.course.price,
+                    'currency': rec.course.currency,
+                    'level': rec.course.level,
+                    'duration': rec.course.duration or '',
+                    'video_hours': rec.course.video_hours,
+                    'thumbnail_url': rec.course.thumbnail_url or '',
+                    'url': rec.course.url or '',
+                },
+                'relevance_score': float(rec.relevance_score),
+                'ai_explanation': rec.ai_explanation,
+                'match_score': item.get('match_score', 0.5),
+                'best_for': item.get('best_for', ''),
+                'potential_gaps': item.get('potential_gaps', ''),
+                'is_saved': rec.is_saved,
+                'regenerate_count': rec.regenerate_count,
+                'created_at': rec.created_at,
+            })
+
+    return saved
