@@ -71,3 +71,30 @@ def retrieve_with_filter(
         ]
 
     return courses
+
+
+def retrieve_courses_for_replace(
+    replaced_course_id: str,
+    topic: str,
+    user_profile: dict | None = None,
+    additional_context: str | None = None,
+    exclude_ids: list[str] | None = None,
+    top_k: int = 20,
+) -> list[dict]:
+    """
+    Find replacement candidates for a specific course.
+    Searches FAISS for courses similar to 'topic', optionally boosted by
+    the replaced course's text, excluding courses already in the path.
+    Returns top_k candidate metadata dicts.
+    """
+    courses, top_score = retrieve_courses(topic, user_profile, top_k=top_k)
+
+    # Exclude courses already in the learning path
+    if exclude_ids:
+        courses = [c for c in courses if c.get('course_id') not in exclude_ids]
+
+    logger.info(
+        f"[retriever] Replacement search: topic='{topic}', "
+        f"replaced={replaced_course_id}, candidates={len(courses)}"
+    )
+    return courses, top_score

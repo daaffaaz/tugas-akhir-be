@@ -18,7 +18,7 @@ MAX_TOKENS: int = config('MAX_TOKENS', default=4000, cast=int)
 TEMPERATURE: float = config('TEMPERATURE', default=0.3, cast=float)
 
 # --- Index Paths ---
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Store index at project root so it's NOT gitignored (media/ is gitignored).
 # This file gets committed so Vercel bundles it.

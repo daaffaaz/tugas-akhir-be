@@ -2,7 +2,7 @@ import logging
 import uuid
 from collections import defaultdict
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -17,10 +17,15 @@ from apps.users.models import UserPreferences
 
 from .generator import generate_roadmap
 from .recommend_generator import generate_recommendations
-from .retriever import retrieve_courses
+from .replace_generator import generate_replacement_explanations
+from .retriever import retrieve_courses, retrieve_courses_for_replace
 from .serializers import (
     CourseRecommendationListSerializer,
     CourseRecommendationUpdateSerializer,
+    LearningPathAddCourseRequestSerializer,
+    LearningPathApplyReplacementRequestSerializer,
+    LearningPathReplaceCourseRequestSerializer,
+    LearningPathRegenerateRequestSerializer,
     RAGGenerateRequestSerializer,
     RAGRecommendRequestSerializer,
 )
@@ -389,10 +394,596 @@ class RAGRecommendationListView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        rec.is_saved = serializer.validated_data['is_saved']
+        rec.is_saved = serializer.validized_data['is_saved']
         rec.save(update_fields=['is_saved'])
 
         return Response(CourseRecommendationListSerializer(rec).data)
+
+
+class RAGLearningPathListView(APIView):
+    """
+    GET /api/rag/learning-paths/
+    List all learning paths for the current user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 10))
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        qs = (
+            LearningPath.objects
+            .filter(user=request.user)
+            .prefetch_related('path_courses')
+            .order_by('-created_at')
+        )
+
+        total = qs.count()
+        items = qs[start:end]
+
+        from apps.learning_paths.serializers import LearningPathListSerializer
+        return Response({
+            'results': LearningPathListSerializer(items, many=True).data,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total + page_size - 1) // page_size,
+        })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Learning Path Edit / Regenerate / Replace / Add / Delete Views
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RAGLearningPathDetailView(APIView):
+    """
+    GET /api/rag/learning-paths/{id}/
+    Fetch a single learning path with full RAG metadata.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        lp = (
+            LearningPath.objects
+            .filter(user=request.user, id=pk)
+            .prefetch_related(
+                'path_courses__course__platform',
+                'path_courses__course__tags',
+            )
+            .first()
+        )
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        response_data = LearningPathDetailSerializer(lp).data
+        response_data['_rag_meta'] = {
+            'regenerate_count': lp.regenerate_count,
+            'regenerate_context': lp.regenerate_context or '',
+            'courses_retrieved': len(lp.path_courses.all()),
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class RAGLearningPathRegenerateView(APIView):
+    """
+    POST /api/rag/learning-paths/{id}/regenerate/
+    Regenerate ENTIRE learning path with additional context.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        serializer = LearningPathRegenerateRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        lp = (
+            LearningPath.objects
+            .filter(user=request.user, id=pk)
+            .first()
+        )
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        additional_context = data.get('additional_context', '')
+
+        logger.info(
+            f"[RAG] Regenerate learning path {pk} by user={request.user.id}, "
+            f"context='{additional_context[:80]}'"
+        )
+
+        # Build user profile
+        user_profile = _build_user_profile(request.user, lp.topic_input)
+        if additional_context:
+            user_profile['additional_context'] = additional_context
+
+        # Retrieve courses
+        courses, top_score = retrieve_courses(lp.topic_input, user_profile, top_k=20)
+
+        if not courses:
+            return Response(
+                {'detail': 'No courses found. Try a different topic.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Generate new roadmap
+        try:
+            roadmap_dict, retrieval_info = generate_roadmap(
+                topic=lp.topic_input,
+                user_profile=user_profile,
+                courses_metadata=courses,
+                top_score=top_score,
+            )
+        except Exception as e:
+            logger.error(f"[RAG] Regenerate generation failed: {e}")
+            return Response(
+                {'detail': f'Regenerate failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Update learning path in DB
+        try:
+            with transaction.atomic():
+                # Increment regenerate counter
+                lp.regenerate_count = lp.regenerate_count + 1
+                lp.regenerate_context = additional_context
+                lp.questionnaire_snapshot = roadmap_dict
+                lp.title = roadmap_dict.get('roadmap_title', lp.title)[:255]
+                lp.description = roadmap_dict.get('overview', lp.description)[:1000]
+                lp.save()
+
+                # Preserve completed courses — mark them so they survive regenerate
+                completed_ids = set(
+                    str(c.course_id)
+                    for c in lp.path_courses.filter(is_completed=True)
+                )
+                reg_version = lp.regenerate_count
+
+                # Delete old LearningPathCourse records
+                lp.path_courses.all().delete()
+
+                # Rebuild LearningPathCourse records from new roadmap
+                position = 0
+                for phase in roadmap_dict.get('phases', []):
+                    for course_item in phase.get('courses', []):
+                        cid = course_item.get('course_id')
+                        if not cid or not Course.objects.filter(id=cid).exists():
+                            continue
+                        position += 1
+                        is_completed = cid in completed_ids
+                        LearningPathCourse.objects.create(
+                            learning_path=lp,
+                            course_id=cid,
+                            position=position,
+                            is_completed=is_completed,
+                            is_manually_added=False,
+                            regenerate_version=reg_version,
+                        )
+
+            # Reload with relations
+            lp = (
+                LearningPath.objects
+                .filter(id=lp.id)
+                .prefetch_related(
+                    'path_courses__course__platform',
+                    'path_courses__course__tags',
+                )
+                .first()
+            )
+
+        except Exception as e:
+            logger.error(f"[RAG] Failed to save regenerated path: {e}")
+            return Response(
+                {'detail': f'Failed to save regenerated path: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        response_data = LearningPathDetailSerializer(lp).data
+        response_data['_rag_meta'] = {
+            'regenerate_count': lp.regenerate_count,
+            'regenerate_context': lp.regenerate_context,
+            'completed_courses_preserved': len(completed_ids),
+            'courses_retrieved': len(courses),
+            'top_similarity_score': float(top_score),
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class RAGLearningPathDeleteCourseView(APIView):
+    """
+    DELETE /api/rag/learning-paths/{id}/courses/{course_id}/
+    Remove a course from a learning path. Positions are reindexed.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk, course_id):
+        lp = LearningPath.objects.filter(user=request.user, id=pk).first()
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item = lp.path_courses.filter(course_id=course_id).first()
+        if not item:
+            return Response(
+                {'detail': 'Course not found in this learning path.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        deleted_position = item.position
+        item.delete()
+
+        # Reindex remaining courses
+        for i, remaining in enumerate(
+            lp.path_courses.order_by('position'), start=1
+        ):
+            if remaining.position != i:
+                remaining.position = i
+                remaining.save(update_fields=['position'])
+
+        return Response(
+            {'detail': 'Course removed from learning path.', 'position': deleted_position},
+            status=status.HTTP_200_OK,
+        )
+
+
+class RAGLearningPathAddCourseView(APIView):
+    """
+    POST /api/rag/learning-paths/{id}/courses/add/
+    Add a course to a learning path at a specific position or end.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        serializer = LearningPathAddCourseRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        lp = (
+            LearningPath.objects
+            .filter(user=request.user, id=pk)
+            .first()
+        )
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        course_id = data['course_id']
+        position = data.get('position')
+
+        # Verify course exists
+        try:
+            course = Course.objects.get(id=course_id)
+        except Course.DoesNotExist:
+            return Response(
+                {'detail': 'Course not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if course already in path
+        if lp.path_courses.filter(course_id=course_id).exists():
+            return Response(
+                {'detail': 'Course already exists in this learning path.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            if position is None:
+                # Append at end
+                max_pos = (
+                    lp.path_courses.order_by('-position').first()
+                )
+                new_position = (max_pos.position + 1) if max_pos else 1
+            else:
+                # Insert at position — shift existing courses down
+                new_position = position
+                lp.path_courses.filter(position__gte=new_position).update(
+                    position=models.F('position') + 1
+                )
+
+            item = LearningPathCourse.objects.create(
+                learning_path=lp,
+                course_id=course_id,
+                position=new_position,
+                is_manually_added=True,
+            )
+
+        # Reload with relations
+        lp = (
+            LearningPath.objects
+            .filter(id=lp.id)
+            .prefetch_related(
+                'path_courses__course__platform',
+                'path_courses__course__tags',
+            )
+            .first()
+        )
+
+        return Response(LearningPathDetailSerializer(lp).data, status=status.HTTP_200_OK)
+
+
+class RAGLearningPathSimilarCoursesView(APIView):
+    """
+    GET /api/rag/learning-paths/{id}/courses/{course_id}/similar/
+    Returns course candidates "similar" to a given course — for add/replace context.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk, course_id):
+        lp = LearningPath.objects.filter(user=request.user, id=pk).first()
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item = lp.path_courses.filter(course_id=course_id).first()
+        if not item:
+            return Response(
+                {'detail': 'Course not found in this learning path.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        course = item.course
+        topic = lp.topic_input or course.title
+
+        # Get courses already in the path (to exclude)
+        existing_ids = [str(c.course_id) for c in lp.path_courses.all()]
+
+        # Retrieve similar courses from FAISS
+        candidates, top_score = retrieve_courses_for_replace(
+            replaced_course_id=str(course_id),
+            topic=topic,
+            user_profile=None,
+            additional_context=None,
+            exclude_ids=existing_ids,
+            top_k=20,
+        )
+
+        # Build user profile for scoring
+        user_profile = _build_user_profile(request.user, topic)
+
+        # Build response
+        from apps.rag.serializers import SimilarCourseSerializer
+        from apps.rag.serializers import SimilarCoursesResponseSerializer
+
+        course_results = []
+        for c in candidates:
+            meta = c.get('metadata', c)
+            course_results.append({
+                'course_id': c.get('course_id'),
+                'title': meta.get('title', ''),
+                'instructor': meta.get('instructor'),
+                'platform': meta.get('platform', ''),
+                'level': meta.get('level', ''),
+                'rating': meta.get('rating'),
+                'reviews_count': meta.get('reviews_count'),
+                'price': meta.get('price'),
+                'currency': meta.get('currency', 'IDR'),
+                'duration': meta.get('duration', ''),
+                'thumbnail_url': meta.get('thumbnail_url', ''),
+                'url': meta.get('url', ''),
+                'relevance_score': c.get('_score', 0.0),
+                'faiss_score': c.get('_score', 0.0),
+            })
+
+        return Response({
+            'original_course_id': str(course_id),
+            'original_course_title': course.title,
+            'topic': topic,
+            'courses': course_results,
+        })
+
+
+class RAGLearningPathReplaceCourseView(APIView):
+    """
+    POST /api/rag/learning-paths/{id}/courses/{course_id}/replace/
+    Find replacement candidates for a specific course, with AI explanations.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, course_id):
+        serializer = LearningPathReplaceCourseRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            lp = (
+                LearningPath.objects
+                .filter(user=request.user, id=pk)
+                .first()
+            )
+        except LearningPath.DoesNotExist:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item = lp.path_courses.filter(course_id=course_id).first()
+        if not item:
+            return Response(
+                {'detail': 'Course not found in this learning path.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        original_course = item.course
+        additional_context = data.get('additional_context', '')
+        topic = lp.topic_input or original_course.title
+
+        # Get courses already in the path (to exclude)
+        existing_ids = [str(c.course_id) for c in lp.path_courses.all()]
+
+        # Build user profile
+        user_profile = _build_user_profile(request.user, topic)
+        if additional_context:
+            user_profile['additional_context'] = additional_context
+
+        # Retrieve replacement candidates
+        count = data.get('count', 5)
+        candidates, top_score = retrieve_courses_for_replace(
+            replaced_course_id=str(course_id),
+            topic=topic,
+            user_profile=user_profile,
+            additional_context=additional_context,
+            exclude_ids=existing_ids,
+            top_k=count + 10,  # Get extra so LLM can filter
+        )
+
+        # Limit to requested count
+        candidates = candidates[:count]
+
+        if not candidates:
+            return Response(
+                {'detail': 'No replacement candidates found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Generate AI explanations for replacements
+        original_meta = {
+            'course_id': str(original_course.id),
+            'metadata': {
+                'title': original_course.title,
+                'instructor': original_course.instructor,
+                'level': original_course.level,
+                'platform': original_course.platform.name,
+                'rating': float(original_course.rating) if original_course.rating else None,
+                'price': float(original_course.price) if original_course.price else None,
+                'currency': original_course.currency,
+                'duration': original_course.duration,
+                'thumbnail_url': original_course.thumbnail_url,
+                'url': original_course.url,
+                'description': original_course.description[:300],
+                'what_you_learn': original_course.what_you_learn[:200],
+                'tags': ', '.join(t.name for t in original_course.tags.all()),
+            },
+        }
+
+        result = generate_replacement_explanations(
+            topic=topic,
+            user_profile=user_profile,
+            original_course_metadata=original_meta,
+            candidate_courses=candidates,
+            additional_context=additional_context,
+        )
+
+        return Response({
+            'original_course_id': str(course_id),
+            'original_course_title': original_course.title,
+            'replacement_reason_summary': result.get(
+                'replacement_reason_summary', ''
+            ),
+            'candidates': result.get('candidates', []),
+        })
+
+
+class RAGLearningPathApplyReplacementView(APIView):
+    """
+    POST /api/rag/learning-paths/{id}/courses/{course_id}/apply/
+    Apply a selected replacement course to the learning path.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, course_id):
+        serializer = LearningPathApplyReplacementRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            lp = (
+                LearningPath.objects
+                .filter(user=request.user, id=pk)
+                .first()
+            )
+        except LearningPath.DoesNotExist:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        item = lp.path_courses.filter(course_id=course_id).first()
+        if not item:
+            return Response(
+                {'detail': 'Course not found in this learning path.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        new_course_id = data['new_course_id']
+        replacement_reason = data.get('replacement_reason', '')
+
+        # Verify new course exists and not already in path
+        try:
+            new_course = Course.objects.get(id=new_course_id)
+        except Course.DoesNotExist:
+            return Response(
+                {'detail': 'Replacement course not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if lp.path_courses.filter(course_id=new_course_id).exists():
+            return Response(
+                {'detail': 'Replacement course already exists in this learning path.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Record old course as replaced
+            item.replaced_by = new_course
+            item.replacement_reason = replacement_reason
+            item.save(
+                update_fields=[
+                    'replaced_by', 'replacement_reason',
+                ],
+            )
+
+            # Update the LearningPathCourse to point to new course
+            # (delete old record, create new at same position)
+            old_position = item.position
+            item.delete()
+
+            LearningPathCourse.objects.create(
+                learning_path=lp,
+                course_id=new_course_id,
+                position=old_position,
+                is_manually_added=True,
+            )
+
+        # Reload with relations
+        lp = (
+            LearningPath.objects
+            .filter(id=lp.id)
+            .prefetch_related(
+                'path_courses__course__platform',
+                'path_courses__course__tags',
+            )
+            .first()
+        )
+
+        return Response({
+            'detail': 'Course replaced successfully.',
+            'learning_path': LearningPathDetailSerializer(lp).data,
+        })
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -4,15 +4,16 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-from apps.rag import config
+from apps.rag import config as rag_config
 
 
 def get_index_path() -> Path:
     """Return the FAISS index file path, searching from project root."""
-    base = Path(__file__).resolve().parent.parent.parent.parent
+    # Primary: config.FAISS_INDEX_FILE (data/rag_index/faiss_index.pkl)
+    # Fallback: sibling media/rag_index/faiss_index.pkl (gitignored sibling directory)
     candidates = [
-        base / 'data' / 'rag_index' / 'faiss_index.pkl',
-        base / 'media' / 'rag_index' / 'faiss_index.pkl',
+        rag_config.FAISS_INDEX_FILE,
+        rag_config.BASE_DIR.parent / 'media' / 'rag_index' / 'faiss_index.pkl',
     ]
     for p in candidates:
         if p.exists():
@@ -40,7 +41,7 @@ def load_faiss_index() -> tuple:
 def save_faiss_index(index, metadata: list[dict], path: Path | None = None):
     """Save FAISS index and metadata to .pkl file."""
     if path is None:
-        path = config.FAISS_INDEX_FILE
+        path = rag_config.FAISS_INDEX_FILE
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'wb') as f:

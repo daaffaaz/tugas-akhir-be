@@ -85,9 +85,11 @@ class Command(BaseCommand):
             f'  Index size: {(index_dir / "faiss_index.pkl").stat().st_size / 1024 / 1024:.2f} MB'
         )
 
-        # Also copy to data/rag_index/ for git commit (Vercel deployment)
-        data_dir = config.BASE_DIR / 'data' / 'rag_index'
-        data_dir.mkdir(parents=True, exist_ok=True)
+        # Also copy to media/rag_index/ for git commit (Vercel deployment)
+        media_dir = config.BASE_DIR / 'media' / 'rag_index'
+        media_dir.mkdir(parents=True, exist_ok=True)
         import shutil
-        shutil.copy2(index_dir / 'faiss_index.pkl', data_dir / 'faiss_index.pkl')
-        self.stdout.write(f'  Copied to {data_dir}/ for git deployment.')
+        shutil.copy2(index_dir / 'faiss_index.pkl', media_dir / 'faiss_index.pkl')
+        self.stdout.write(
+            self.style.SUCCESS(f'  Copied to {media_dir}/ for git deployment.')
+        )
