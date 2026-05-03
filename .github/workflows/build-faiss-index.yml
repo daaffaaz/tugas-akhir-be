@@ -30,7 +30,13 @@ jobs:
         run: pip install -r requirements/base.txt
 
       - name: Build FAISS index
-        run: python manage.py build_faiss_index
+        run: |
+          echo "=== DEBUG: Check env vars ==="
+          echo "DATABASE_URL first 20 chars: ${DATABASE_URL:0:20}"
+          echo "DATABASE_URL length: ${#DATABASE_URL}"
+          echo "OPENAI_API_KEY set: [${OPENAI_API_KEY:+yes}]"
+          echo "=== Running build command ==="
+          python manage.py build_faiss_index
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
