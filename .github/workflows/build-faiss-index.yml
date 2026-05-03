@@ -1,0 +1,59 @@
+name: Build FAISS Index
+
+on:
+  # Manual trigger dari GitHub Actions tab
+  workflow_dispatch:
+
+  # Auto-trigger setiap ada perubahan di course / chunker logic
+  push:
+    paths:
+      - 'apps/courses/**'
+      - 'apps/rag/chunker.py'
+      - 'apps/rag/embedder.py'
+      - 'apps/rag/vector_store.py'
+
+
+jobs:
+  build-index:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements/base.txt
+
+      - name: Build FAISS index
+        run: python manage.py build_faiss_index
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          DEBUG: ${{ secrets.DEBUG }}
+
+      - name: Commit index files
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          if [ -f data/rag_index/faiss_index.pkl ]; then
+            echo "Index built successfully, committing..."
+            git add data/rag_index/ media/rag_index/
+            # Check if there are changes to commit
+            if git diff --staged --quiet; then
+              echo "No changes to commit"
+            else
+              git commit -m "chore: rebuild FAISS index from GitHub Actions"
+              git push
+              echo "Index committed and pushed successfully"
+            fi
+          else
+            echo "WARNING: faiss_index.pkl was not created!"
+            ls -la data/rag_index/ || echo "data/rag_index/ is empty/missing"
+          fi
