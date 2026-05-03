@@ -6,6 +6,10 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv()) + [  # noqa: F40
     '.vercel.app',
 ]
 
+CORS_ALLOWED_ORIGINS = [
+    'https://ta-persona-learn.vercel.app',
+]
+
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
