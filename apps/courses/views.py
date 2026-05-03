@@ -1,6 +1,8 @@
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from .filters import CourseFilter
 from .models import Course
@@ -21,3 +23,13 @@ class CourseListView(generics.ListAPIView):
     search_fields = ['title', 'description']
     ordering_fields = ['title', 'price', 'rating', 'reviews_count', 'video_hours', 'created_at']
     ordering = ['title']
+
+
+class CourseDetailView(generics.RetrieveAPIView):
+    """GET /api/courses/{id}/ — course detail."""
+    serializer_class = CourseListSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return Course.objects.select_related('platform').prefetch_related('tags')
