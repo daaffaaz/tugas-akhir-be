@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "IT Learning Path API",
-    "description": "Django REST API for IT Learning Path (JWT auth, questionnaire, courses, learning paths).\n\nSet collection variables: `base_url` (e.g. http://localhost:8000), then run **Register** or **Login** and copy `access` / `refresh` into the token variables for protected routes.",
+    "description": "Django REST API for IT Learning Path (JWT auth, questionnaire, courses, learning paths, AI RAG).\n\nSet collection variables: `base_url` (e.g. http://localhost:8000 or https://ta-be-persona-learn.vercel.app), then run **Register** or **Login** and copy `access` / `refresh` into the token variables for protected routes.\n\nFor Vercel deployment, set base_url to: https://ta-be-persona-learn.vercel.app",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,7 +12,8 @@
     { "key": "learning_path_id", "value": "" },
     { "key": "learning_path_course_id", "value": "" },
     { "key": "course_id", "value": "" },
-    { "key": "platform_id", "value": "" }
+    { "key": "platform_id", "value": "" },
+    { "key": "recommendation_id", "value": "" }
   ],
   "item": [
     {
@@ -251,6 +252,196 @@
             "header": [],
             "url": "{{base_url}}/api/learning-paths/courses/{{learning_path_course_id}}/toggle-complete/",
             "description": "`learning_path_course_id` is the `LearningPathCourse` row id (UUID), not the course id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI (RAG)",
+      "description": "AI-powered learning path generation and course recommendation endpoints. All endpoints require JWT authentication.",
+      "item": [
+        {
+          "name": "Generate Roadmap",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"machine learning untuk data science\",\n  \"budget_idr\": 1000000,\n  \"level\": \"Beginner\"\n}"
+            },
+            "url": "{{base_url}}/api/rag/generate-roadmap/",
+            "description": "Generate a personalized AI learning roadmap using RAG (Retrieval-Augmented Generation). Returns a complete LearningPath with ordered courses grouped by phase. Uses GPT-4o and FAISS vector search over 451+ course database.\n\nParams:\n- topic (required): Learning goal/topic (min 3 chars)\n- budget_idr (optional): Max budget in IDR\n- level (optional): Beginner/Intermediate/Advanced"
+          }
+        },
+        {
+          "name": "List Learning Paths",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/rag/learning-paths/",
+            "description": "List all AI-generated learning paths for the current user. Supports pagination via page and page_size query params."
+          }
+        },
+        {
+          "name": "Get Learning Path Detail",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/",
+            "description": "Get full detail of a learning path including all courses, phases, and RAG metadata (regenerate_count, regenerate_context)."
+          }
+        },
+        {
+          "name": "Regenerate Learning Path",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"additional_context\": \"Saya lebih suka kursus yang lebih praktis dengan hands-on projects\"\n}"
+            },
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/regenerate/",
+            "description": "Regenerate the entire learning path with additional context. Increment regenerate_count. Courses marked as completed are preserved.\n\nParams:\n- additional_context (optional): Additional requirements/feedback for regeneration\n- keep_courses (optional): Preserve already-completed courses"
+          }
+        },
+        {
+          "name": "Add Course to Learning Path",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"course_id\": \"{{course_id}}\",\n  \"position\": 3\n}"
+            },
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/courses/add/",
+            "description": "Add an existing course from the catalog to the learning path at a specific position (or append at the end if position not provided)."
+          }
+        },
+        {
+          "name": "Get Similar Courses",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/courses/{{course_id}}/similar/",
+            "description": "Get FAISS-similar courses to a given course in a learning path. Used as candidates for replacement. Excludes courses already in the path."
+          }
+        },
+        {
+          "name": "Replace Course — Get Candidates",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"additional_context\": \"Saya ingin course yang lebih murah\",\n  \"count\": 5\n}"
+            },
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/courses/{{course_id}}/replace/",
+            "description": "Get AI-evaluated replacement candidates for a specific course. Returns scored candidates with match_reason, best_for, and potential_concerns.\n\nParams:\n- additional_context (optional): Reason/expectation for replacement\n- count (optional): Number of candidates (default 5, max 20)"
+          }
+        },
+        {
+          "name": "Apply Course Replacement",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_course_id\": \"{{course_id}}\",\n  \"replacement_reason\": \"lebih sesuai dengan level saya\"\n}"
+            },
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/courses/{{course_id}}/apply/",
+            "description": "Apply a selected replacement course. The original course is marked as replaced and the LearningPathCourse is updated to point to the new course."
+          }
+        },
+        {
+          "name": "Remove Course from Learning Path",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/courses/{{course_id}}/",
+            "description": "Remove a course from the learning path. Remaining courses are automatically reindexed (positions reordered)."
+          }
+        },
+        {
+          "name": "Course Recommendations (AI)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"data analysis\",\n  \"additional_context\": \"Fokus ke tools seperti SQL dan Python pandas\",\n  \"count\": 5,\n  \"regenerate\": false\n}"
+            },
+            "url": "{{base_url}}/api/rag/recommend/",
+            "description": "Generate AI-powered course recommendations with explanations (why this course, best_for, match_score). Results are saved to DB.\n\nParams:\n- topic (required): Learning topic\n- additional_context (optional): Additional context for personalization\n- count (optional): Number of recommendations (default 5, max 20)\n- regenerate (optional): True = regenerate previous results (additional_context required if True)"
+          }
+        },
+        {
+          "name": "List Saved Recommendations",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/rag/recommendations/?page=1&page_size=10",
+            "description": "List all saved AI recommendations for the current user. Supports filtering by topic (query param: topic) and is_saved (query param: is_saved=true/false)."
+          }
+        },
+        {
+          "name": "Update Recommendation Saved Status",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_saved\": true\n}"
+            },
+            "url": "{{base_url}}/api/rag/recommendations/{{recommendation_id}}/",
+            "description": "Toggle is_saved status of a recommendation. Replace {{recommendation_id}} with the recommendation UUID from the list response."
           }
         }
       ]
