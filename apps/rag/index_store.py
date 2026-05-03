@@ -10,9 +10,12 @@ from apps.rag import config as rag_config
 def get_index_path() -> Path:
     """Return the FAISS index file path, searching from project root."""
     # Primary: config.FAISS_INDEX_FILE (data/rag_index/faiss_index.pkl)
-    # Fallback: sibling media/rag_index/faiss_index.pkl (gitignored sibling directory)
+    # Fallback 1: sibling data/rag_index/  (local dev — gitignored)
+    # Fallback 2: media/rag_index/         (git-committed copy for Vercel deployment)
     candidates = [
-        rag_config.FAISS_INDEX_FILE,
+        rag_config.FAISS_INDEX_FILE,                      # data/rag_index/faiss_index.pkl
+        rag_config.BASE_DIR / 'data' / 'rag_index' / 'faiss_index.pkl',
+        rag_config.BASE_DIR / 'media' / 'rag_index' / 'faiss_index.pkl',
         rag_config.BASE_DIR.parent / 'media' / 'rag_index' / 'faiss_index.pkl',
     ]
     for p in candidates:
@@ -20,7 +23,7 @@ def get_index_path() -> Path:
             return p
     raise FileNotFoundError(
         f"FAISS index not found. Run 'python manage.py build_faiss_index' first. "
-        f"Searched: {candidates}"
+        f"Searched: {[str(p) for p in candidates]}"
     )
 
 

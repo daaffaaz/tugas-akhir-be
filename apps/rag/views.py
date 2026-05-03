@@ -190,7 +190,13 @@ class RAGRoadmapGenerateView(APIView):
 
         if not courses:
             return Response(
-                {'detail': 'No courses found matching your topic. Try a different query.'},
+                {
+                    'detail': (
+                        'No courses found matching your topic. '
+                        'The search index may not be built yet. '
+                        'Contact support if this persists.'
+                    )
+                },
                 status=status.HTTP_404_NOT_FOUND,
             )
 

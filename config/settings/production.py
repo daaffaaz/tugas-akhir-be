@@ -4,11 +4,15 @@ DEBUG = False
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv()) + [  # noqa: F405
     '.vercel.app',
+    'ta-be-persona-learn.vercel.app',
 ]
+
 
 CORS_ALLOWED_ORIGINS = [
     'https://ta-persona-learn.vercel.app',
+    'https://ta-be-persona-learn.vercel.app',
 ]
+CORS_ALLOW_ALL_ORIGINS = False
 
 CSRF_TRUSTED_ORIGINS = [
     'https://ta-persona-learn.vercel.app',

@@ -25,8 +25,12 @@ def retrieve_courses(
     # Embed query
     query_vector = embedder.embed_text_cached(topic)
 
-    # Load FAISS index
-    index = index_store.get_faiss_index()
+    # Load FAISS index (graceful error if missing)
+    try:
+        index = index_store.get_faiss_index()
+    except FileNotFoundError:
+        logger.warning("[retriever] FAISS index not found — returning empty results.")
+        return [], 0.0
 
     # Search
     raw_results = vector_store.search_index(index, query_vector, k=top_k, threshold=threshold)
