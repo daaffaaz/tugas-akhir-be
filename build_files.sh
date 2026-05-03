@@ -1,6 +1,6 @@
 #!/bin/bash
 
-pip install --break-system-packages -r requirements.txt
+pip install --break-system-packages -r requirements/base.txt
 
 python manage.py build_faiss_index --verbosity 1
 
