@@ -437,6 +437,37 @@ class RAGLearningPathListView(APIView):
 # Learning Path Edit / Regenerate / Replace / Add / Delete Views
 # ─────────────────────────────────────────────────────────────────────────────
 
+class RAGLearningPathDetailView(APIView):
+    """
+    GET /api/rag/learning-paths/{id}/
+    Fetch a single learning path with full RAG metadata.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        lp = (
+            LearningPath.objects
+            .filter(user=request.user, id=pk)
+            .prefetch_related(
+                'path_courses__course__platform',
+                'path_courses__course__tags',
+            )
+            .first()
+        )
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        response_data = LearningPathDetailSerializer(lp).data
+        response_data['_rag_meta'] = {
+            'regenerate_count': lp.regenerate_count,
+            'regenerate_context': lp.regenerate_context or '',
+            'courses_retrieved': len(lp.path_courses.all()),
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
 class RAGLearningPathRegenerateView(APIView):
     """
     POST /api/rag/learning-paths/{id}/regenerate/
@@ -449,18 +480,11 @@ class RAGLearningPathRegenerateView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        try:
-            lp = (
-                LearningPath.objects
-                .filter(user=request.user, id=pk)
-                .first()
-            )
-        except LearningPath.DoesNotExist:
-            return Response(
-                {'detail': 'Learning path not found.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+        lp = (
+            LearningPath.objects
+            .filter(user=request.user, id=pk)
+            .first()
+        )
         if not lp:
             return Response(
                 {'detail': 'Learning path not found.'},
@@ -580,14 +604,7 @@ class RAGLearningPathDeleteCourseView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, pk, course_id):
-        try:
-            lp = LearningPath.objects.filter(user=request.user, id=pk).first()
-        except LearningPath.DoesNotExist:
-            return Response(
-                {'detail': 'Learning path not found.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+        lp = LearningPath.objects.filter(user=request.user, id=pk).first()
         if not lp:
             return Response(
                 {'detail': 'Learning path not found.'},
@@ -630,18 +647,11 @@ class RAGLearningPathAddCourseView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        try:
-            lp = (
-                LearningPath.objects
-                .filter(user=request.user, id=pk)
-                .first()
-            )
-        except LearningPath.DoesNotExist:
-            return Response(
-                {'detail': 'Learning path not found.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+        lp = (
+            LearningPath.objects
+            .filter(user=request.user, id=pk)
+            .first()
+        )
         if not lp:
             return Response(
                 {'detail': 'Learning path not found.'},
@@ -710,14 +720,7 @@ class RAGLearningPathSimilarCoursesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk, course_id):
-        try:
-            lp = LearningPath.objects.filter(user=request.user, id=pk).first()
-        except LearningPath.DoesNotExist:
-            return Response(
-                {'detail': 'Learning path not found.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+        lp = LearningPath.objects.filter(user=request.user, id=pk).first()
         if not lp:
             return Response(
                 {'detail': 'Learning path not found.'},

@@ -9,6 +9,13 @@ urlpatterns = [
     # ── Learning Path List (existing) ─────────────────────────────────────────
     path('rag/learning-paths/', views.RAGLearningPathListView.as_view(), name='rag-learning-path-list'),
 
+    # ── Learning Path Detail ─────────────────────────────────────────────────
+    path(
+        'rag/learning-paths/<uuid:pk>/',
+        views.RAGLearningPathDetailView.as_view(),
+        name='rag-learning-path-detail',
+    ),
+
     # ── Learning Path Edit / Regenerate / Replace ─────────────────────────────
     path(
         'rag/learning-paths/<uuid:pk>/regenerate/',
