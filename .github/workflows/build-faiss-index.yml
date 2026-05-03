@@ -36,6 +36,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           DEBUG: ${{ secrets.DEBUG }}
+          DJANGO_SETTINGS_MODULE: config.settings.local
 
       - name: Commit index files
         run: |
