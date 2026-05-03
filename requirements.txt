@@ -9,3 +9,9 @@ dj-database-url
 google-auth
 requests
 whitenoise>=6.7
+
+openai>=1.30.0
+faiss-cpu>=1.8.0
+numpy>=1.26.0
+pydantic>=2.6.0
+tiktoken>=0.7.0
