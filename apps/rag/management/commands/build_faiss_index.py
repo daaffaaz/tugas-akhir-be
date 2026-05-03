@@ -70,9 +70,9 @@ class Command(BaseCommand):
         embeddings = embedder.embed_texts(texts)
         self.stdout.write(f'  → {len(embeddings)} embeddings generated.')
 
-        self.stdout.write('Building FAISS index...')
+        self.stdout.write('Building embeddings index...')
         index = vector_store.build_faiss_index(embeddings)
-        self.stdout.write(f'  → Index built with {index.ntotal} vectors, dim={index.d}')
+        self.stdout.write(f'  → Index built with {index.shape[0]} vectors, dim={index.shape[1]}')
 
         self.stdout.write(f'Saving to {index_dir}...')
         index_store.save_faiss_index(index, chunks, path=index_dir / 'faiss_index.pkl')

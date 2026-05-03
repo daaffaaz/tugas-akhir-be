@@ -1,65 +1,61 @@
 import numpy as np
 
-import faiss
-
-from apps.rag import config, index_store
+from apps.rag import config
 
 
-def build_faiss_index(embeddings: list[list[float]]) -> faiss.Index:
+def build_faiss_index(embeddings: list[list[float]]) -> np.ndarray:
     """
-    Build a FAISS IndexFlatIP (Inner Product) index from a list of embedding vectors.
-    Uses Inner Product for cosine similarity (embeddings must be normalized first).
+    Build a normalized embeddings matrix for cosine-similarity search.
+
+    Returns a (n_vectors, dim) float32 numpy array with each row L2-normalized.
+    Despite the legacy name, this no longer uses FAISS — pure NumPy is used to
+    avoid SIGILL crashes on serverless runtimes whose CPUs lack the AVX2/AVX512
+    instructions baked into faiss-cpu wheels.
     """
     if not embeddings:
         raise ValueError("No embeddings provided to build index")
 
-    embeddings_np = np.array(embeddings, dtype=np.float32)
-
-    # Normalize for cosine similarity
-    norms = np.linalg.norm(embeddings_np, axis=1, keepdims=True)
-    norms[norms == 0] = 1  # avoid divide by zero
-    embeddings_np = embeddings_np / norms
-
-    dim = embeddings_np.shape[1]
-    index = faiss.IndexFlatIP(dim)
-    index.add(embeddings_np)
-
-    return index
+    matrix = np.asarray(embeddings, dtype=np.float32)
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    return matrix / norms
 
 
 def search_index(
-    index: faiss.Index,
+    index: np.ndarray,
     query_vector: list[float],
     k: int | None = None,
     threshold: float | None = None,
 ) -> list[tuple[int, float]]:
     """
-    Search FAISS index for top-k nearest neighbours.
-    Returns list of (index_position, similarity_score) sorted by score descending.
+    Search the embeddings matrix for top-k nearest neighbours by cosine similarity.
+    Returns list of (row_index, similarity_score) sorted by score descending.
     """
     if k is None:
         k = config.RAG_TOP_K
     if threshold is None:
         threshold = config.RAG_SIMILARITY_THRESHOLD
 
-    query_np = np.array([query_vector], dtype=np.float32)
-    # Normalize query for cosine similarity
-    norms = np.linalg.norm(query_np, axis=1, keepdims=True)
-    norms[norms == 0] = 1
-    query_np = query_np / norms
+    query = np.asarray(query_vector, dtype=np.float32)
+    norm = np.linalg.norm(query)
+    if norm == 0:
+        return []
+    query = query / norm
 
-    distances, indices = index.search(query_np, k)
+    scores = index @ query  # cosine similarity since both sides are L2-normalized
 
-    results = []
-    for dist, idx in zip(distances[0], indices[0]):
-        if idx < 0:
+    k = min(k, scores.shape[0])
+    # argpartition gives top-k unsorted, then we sort just those k.
+    top_idx = np.argpartition(-scores, k - 1)[:k]
+    top_idx = top_idx[np.argsort(-scores[top_idx])]
+
+    results: list[tuple[int, float]] = []
+    for idx in top_idx:
+        score = float(scores[idx])
+        if threshold is not None and score < threshold:
             continue
-        if threshold is not None and dist < threshold:
-            continue
-        results.append((int(idx), float(dist)))
+        results.append((int(idx), score))
 
-    # Sort by score descending
-    results.sort(key=lambda x: x[1], reverse=True)
     return results
 
 
@@ -70,7 +66,7 @@ def search_from_chunks(
     threshold: float | None = None,
 ) -> list[tuple[dict, float]]:
     """
-    Build a temporary FAISS index from a list of chunk metadata dicts
+    Build a temporary embeddings matrix from a list of chunk metadata dicts
     and search it. Used for on-demand search without a pre-built index.
     Returns list of (chunk_metadata, similarity_score).
     """
