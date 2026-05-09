@@ -17,6 +17,7 @@ from .serializers import (
     LearningPathCreateSerializer,
     LearningPathDetailSerializer,
     LearningPathListSerializer,
+    UserGlobalProgressSerializer,
 )
 
 
@@ -116,6 +117,53 @@ class LearningPathBulkUpdateView(APIView):
         path.refresh_from_db()
         out = LearningPathDetailSerializer(path)
         return Response(out.data)
+
+
+class UserGlobalProgressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        paths = (
+            LearningPath.objects.filter(user=request.user)
+            .annotate(
+                total_courses=Count('path_courses', distinct=True),
+                completed_courses=Count(
+                    'path_courses',
+                    filter=Q(path_courses__is_completed=True),
+                ),
+            )
+            .order_by('-created_at')
+        )
+
+        total_courses = sum(p.total_courses for p in paths)
+        total_completed = sum(p.completed_courses for p in paths)
+
+        completed_paths = sum(
+            1 for p in paths if p.total_courses > 0 and p.completed_courses == p.total_courses
+        )
+        in_progress_paths = sum(
+            1 for p in paths if 0 < p.completed_courses < p.total_courses
+        )
+        not_started_paths = sum(
+            1 for p in paths if p.completed_courses == 0
+        )
+
+        overall_pct = 0.0
+        if total_courses:
+            overall_pct = round(100.0 * total_completed / total_courses, 2)
+
+        data = {
+            'total_learning_paths': paths.count(),
+            'total_courses': total_courses,
+            'total_completed_courses': total_completed,
+            'overall_progress_percentage': overall_pct,
+            'completed_paths': completed_paths,
+            'in_progress_paths': in_progress_paths,
+            'not_started_paths': not_started_paths,
+            'learning_paths': paths,
+        }
+
+        return Response(UserGlobalProgressSerializer(data).data)
 
 
 class LearningPathCourseToggleCompleteView(APIView):

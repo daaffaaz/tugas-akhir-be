@@ -114,6 +114,43 @@ class LearningPathDetailSerializer(serializers.ModelSerializer):
         return LearningPathCourseItemSerializer(items, many=True).data
 
 
+class LearningPathProgressSummarySerializer(serializers.ModelSerializer):
+    total_courses = serializers.IntegerField(read_only=True)
+    completed_courses = serializers.IntegerField(read_only=True)
+    progress_percentage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LearningPath
+        fields = (
+            'id',
+            'title',
+            'is_saved',
+            'total_courses',
+            'completed_courses',
+            'progress_percentage',
+            'created_at',
+            'updated_at',
+        )
+
+    def get_progress_percentage(self, obj):
+        total = getattr(obj, 'total_courses', 0)
+        done = getattr(obj, 'completed_courses', 0)
+        if not total:
+            return 0.0
+        return round(100.0 * float(done) / float(total), 2)
+
+
+class UserGlobalProgressSerializer(serializers.Serializer):
+    total_learning_paths = serializers.IntegerField()
+    total_courses = serializers.IntegerField()
+    total_completed_courses = serializers.IntegerField()
+    overall_progress_percentage = serializers.FloatField()
+    completed_paths = serializers.IntegerField()
+    in_progress_paths = serializers.IntegerField()
+    not_started_paths = serializers.IntegerField()
+    learning_paths = LearningPathProgressSummarySerializer(many=True)
+
+
 class BulkCourseItemSerializer(serializers.Serializer):
     course_id = serializers.UUIDField()
     position = serializers.IntegerField(min_value=1)

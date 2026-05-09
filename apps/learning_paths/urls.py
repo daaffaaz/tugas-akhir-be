@@ -5,9 +5,11 @@ from .views import (
     LearningPathCourseToggleCompleteView,
     LearningPathDetailView,
     LearningPathListCreateView,
+    UserGlobalProgressView,
 )
 
 urlpatterns = [
+    path('learning-paths/progress/', UserGlobalProgressView.as_view(), name='learning-paths-global-progress'),
     path('learning-paths/', LearningPathListCreateView.as_view(), name='learning-paths-list'),
     path(
         'learning-paths/<uuid:pk>/bulk-update/',
