@@ -1064,17 +1064,6 @@ class RAGLearningPathApplyReplacementView(APIView):
             )
 
         with transaction.atomic():
-            # Record old course as replaced
-            item.replaced_by = new_course
-            item.replacement_reason = replacement_reason
-            item.save(
-                update_fields=[
-                    'replaced_by', 'replacement_reason',
-                ],
-            )
-
-            # Update the LearningPathCourse to point to new course
-            # (delete old record, create new at same position)
             old_position = item.position
             item.delete()
 
