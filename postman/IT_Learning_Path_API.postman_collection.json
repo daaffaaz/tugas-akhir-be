@@ -398,6 +398,23 @@
           }
         },
         {
+          "name": "Reorder Courses in Learning Path",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"course_ids\": [\"uuid-1\", \"uuid-2\", \"uuid-3\"]\n}"
+            },
+            "url": "{{base_url}}/api/rag/learning-paths/{{learning_path_id}}/courses/reorder/",
+            "description": "Reorder courses in a learning path. Frontend already sends the correct order.\n\nParams:\n- course_ids (required): Array of course UUIDs in the new order."
+          }
+        },
+        {
           "name": "Course Recommendations (AI)",
           "request": {
             "auth": {

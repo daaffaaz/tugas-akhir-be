@@ -26,6 +26,7 @@ from .serializers import (
     LearningPathApplyReplacementRequestSerializer,
     LearningPathReplaceCourseRequestSerializer,
     LearningPathRegenerateRequestSerializer,
+    LearningPathReorderRequestSerializer,
     RAGGenerateRequestSerializer,
     RAGRecommendRequestSerializer,
 )
@@ -605,9 +606,66 @@ class RAGLearningPathRegenerateView(APIView):
 class RAGLearningPathDeleteCourseView(APIView):
     """
     DELETE /api/rag/learning-paths/{id}/courses/{course_id}/
-    Remove a course from a learning path. Positions are reindexed.
+        Remove a course from a learning path. Positions are reindexed.
+
+    PATCH /api/rag/learning-paths/{id}/courses/{course_id}/
+        Apply a course replacement.
+        Body: { "new_course_id": "...", "replacement_reason": "..." }
+        (Supports frontend's existing PATCH call without needing /apply/ suffix)
     """
     permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk, course_id):
+        """Apply course replacement — matches frontend PATCH /courses/{courseId}/"""
+        serializer = LearningPathApplyReplacementRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        lp = LearningPath.objects.filter(user=request.user, id=pk).first()
+        if not lp:
+            return Response({'detail': 'Learning path not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        item = lp.path_courses.filter(course_id=course_id).first()
+        if not item:
+            return Response({'detail': 'Course not found in this learning path.'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_course_id = data['new_course_id']
+        replacement_reason = data.get('replacement_reason', '')
+
+        try:
+            new_course = Course.objects.get(id=new_course_id)
+        except Course.DoesNotExist:
+            return Response({'detail': 'Replacement course not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if lp.path_courses.filter(course_id=new_course_id).exists():
+            return Response({'detail': 'Replacement course already exists in this learning path.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            item.replaced_by = new_course
+            item.replacement_reason = replacement_reason
+            item.save(update_fields=['replaced_by', 'replacement_reason'])
+            old_position = item.position
+            item.delete()
+            LearningPathCourse.objects.create(
+                learning_path=lp,
+                course_id=new_course_id,
+                position=old_position,
+                is_manually_added=True,
+            )
+
+        lp = (
+            LearningPath.objects
+            .filter(id=lp.id)
+            .prefetch_related(
+                'path_courses__course__platform',
+                'path_courses__course__tags',
+            )
+            .first()
+        )
+        return Response({
+            'detail': 'Course replaced successfully.',
+            'learning_path': LearningPathDetailSerializer(lp).data,
+        })
 
     def delete(self, request, pk, course_id):
         lp = LearningPath.objects.filter(user=request.user, id=pk).first()
@@ -639,6 +697,58 @@ class RAGLearningPathDeleteCourseView(APIView):
             {'detail': 'Course removed from learning path.', 'position': deleted_position},
             status=status.HTTP_200_OK,
         )
+
+
+class RAGLearningPathReorderView(APIView):
+    """
+    PATCH /api/rag/learning-paths/{id}/courses/reorder/
+    Reorder courses in a learning path. Frontend sudah kirim urutan yang benar.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        serializer = LearningPathReorderRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        course_ids = serializer.validated_data['course_ids']
+
+        lp = LearningPath.objects.filter(user=request.user, id=pk).first()
+        if not lp:
+            return Response(
+                {'detail': 'Learning path not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Verify all course_ids exist in this learning path
+        existing_ids = set(str(c.course_id) for c in lp.path_courses.all())
+        ordered_ids = [str(cid) for cid in course_ids]
+
+        missing = [cid for cid in ordered_ids if cid not in existing_ids]
+        if missing:
+            return Response(
+                {'detail': f'Courses not found in this learning path: {missing}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Update positions based on frontend-provided order
+        with transaction.atomic():
+            for position, course_id in enumerate(ordered_ids, start=1):
+                LearningPathCourse.objects.filter(
+                    learning_path=lp,
+                    course_id=course_id,
+                ).update(position=position)
+
+        # Reload with relations
+        lp = (
+            LearningPath.objects
+            .filter(id=lp.id)
+            .prefetch_related(
+                'path_courses__course__platform',
+                'path_courses__course__tags',
+            )
+            .first()
+        )
+
+        return Response(LearningPathDetailSerializer(lp).data)
 
 
 class RAGLearningPathAddCourseView(APIView):

@@ -45,6 +45,11 @@ urlpatterns = [
         name='rag-learning-path-delete-course',
     ),
     path(
+        'rag/learning-paths/<uuid:pk>/courses/reorder/',
+        views.RAGLearningPathReorderView.as_view(),
+        name='rag-learning-path-reorder',
+    ),
+    path(
         'rag/learning-paths/<uuid:pk>/courses/add/',
         views.RAGLearningPathAddCourseView.as_view(),
         name='rag-learning-path-add-course',
