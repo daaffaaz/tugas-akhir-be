@@ -15,6 +15,18 @@ class LearningPathListSerializer(serializers.ModelSerializer):
     total_courses = serializers.IntegerField(read_only=True)
     completed_courses = serializers.IntegerField(read_only=True)
     progress_percentage = serializers.SerializerMethodField()
+    difficulty = serializers.CharField(
+        source='questionnaire_snapshot.difficulty_curve', read_only=True, allow_null=True
+    )
+    total_duration_weeks = serializers.IntegerField(
+        source='questionnaire_snapshot.total_duration_weeks', read_only=True, allow_null=True
+    )
+    target_skills = serializers.ListField(
+        child=serializers.CharField(),
+        source='questionnaire_snapshot.target_skills',
+        read_only=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = LearningPath
@@ -27,6 +39,9 @@ class LearningPathListSerializer(serializers.ModelSerializer):
             'total_courses',
             'completed_courses',
             'progress_percentage',
+            'difficulty',
+            'total_duration_weeks',
+            'target_skills',
             'created_at',
             'updated_at',
         )
