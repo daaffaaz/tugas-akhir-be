@@ -2,6 +2,10 @@ from .base import *  # noqa: F403, F401
 
 DEBUG = False
 
+# Supabase transaction pooler + Vercel serverless: never persist connections
+# between requests — each request gets a fresh connection from the pool.
+DATABASES['default']['CONN_MAX_AGE'] = 0  # noqa: F405
+
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv()) + [  # noqa: F405
     '.vercel.app',
     'ta-be-persona-learn.vercel.app',
