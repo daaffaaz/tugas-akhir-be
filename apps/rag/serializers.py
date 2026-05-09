@@ -264,10 +264,15 @@ class LearningPathAddCourseRequestSerializer(serializers.Serializer):
     course_id = serializers.UUIDField(
         help_text='UUID dari course yang mau ditambahkan'
     )
+    phase_number = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        help_text='Fase tujuan. Course akan disisipkan di akhir fase tersebut. Jika tidak diisi, course ditambahkan di paling akhir tanpa fase.'
+    )
     position = serializers.IntegerField(
         required=False,
         min_value=1,
-        help_text='Posisi insertion (default: append di akhir).'
+        help_text='Posisi insertion manual (opsional, diabaikan jika phase_number diisi).'
     )
 
 

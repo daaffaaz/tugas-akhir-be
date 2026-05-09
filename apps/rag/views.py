@@ -118,22 +118,23 @@ def _save_roadmap_to_db(user, topic: str, roadmap_dict: dict) -> LearningPath:
     title = roadmap_dict.get('roadmap_title') or f"Roadmap: {topic}"
 
     # Collect all course IDs from all phases
-    course_positions = []  # list of (course_id, position)
+    course_positions = []  # list of (course_id, position, phase_number)
     position = 0
     for phase in phases:
+        phase_num = phase.get('phase_number')
         for course_item in phase.get('courses', []):
             cid = course_item.get('course_id')
             if cid:
                 position += 1
-                course_positions.append((cid, position))
+                course_positions.append((cid, position, phase_num))
 
     if not course_positions:
         raise ValueError("No valid courses in roadmap to save.")
 
     # Verify all course IDs exist
-    course_ids = [cid for cid, _ in course_positions]
+    course_ids = [cid for cid, _, __ in course_positions]
     valid_ids = set(str(c.id) for c in Course.objects.filter(id__in=course_ids))
-    course_positions = [(cid, pos) for cid, pos in course_positions if cid in valid_ids]
+    course_positions = [(cid, pos, pn) for cid, pos, pn in course_positions if cid in valid_ids]
 
     if not course_positions:
         raise ValueError("No valid course IDs found in database.")
@@ -148,11 +149,12 @@ def _save_roadmap_to_db(user, topic: str, roadmap_dict: dict) -> LearningPath:
             questionnaire_snapshot=roadmap_dict,
         )
 
-        for course_id, pos in course_positions:
+        for course_id, pos, phase_num in course_positions:
             LearningPathCourse.objects.create(
                 learning_path=learning_path,
                 course_id=course_id,
                 position=pos,
+                phase_number=phase_num,
                 is_manually_added=False,
             )
 
@@ -558,6 +560,7 @@ class RAGLearningPathRegenerateView(APIView):
                 # Rebuild LearningPathCourse records from new roadmap
                 position = 0
                 for phase in roadmap_dict.get('phases', []):
+                    phase_num = phase.get('phase_number')
                     for course_item in phase.get('courses', []):
                         cid = course_item.get('course_id')
                         if not cid or not Course.objects.filter(id=cid).exists():
@@ -568,6 +571,7 @@ class RAGLearningPathRegenerateView(APIView):
                             learning_path=lp,
                             course_id=cid,
                             position=position,
+                            phase_number=phase_num,
                             is_completed=is_completed,
                             is_manually_added=False,
                             regenerate_version=reg_version,
@@ -775,6 +779,7 @@ class RAGLearningPathAddCourseView(APIView):
             )
 
         course_id = data['course_id']
+        phase_number = data.get('phase_number')
         position = data.get('position')
 
         # Verify course exists
@@ -793,24 +798,44 @@ class RAGLearningPathAddCourseView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        with transaction.atomic():
-            if position is None:
-                # Append at end
-                max_pos = (
-                    lp.path_courses.order_by('-position').first()
+        # Validate phase_number exists in this learning path
+        if phase_number is not None:
+            phase_exists = lp.path_courses.filter(phase_number=phase_number).exists()
+            if not phase_exists:
+                return Response(
+                    {'detail': f'Phase {phase_number} not found in this learning path.'},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-                new_position = (max_pos.position + 1) if max_pos else 1
-            else:
-                # Insert at position — shift existing courses down
+
+        with transaction.atomic():
+            if phase_number is not None:
+                # Insert at end of the specified phase
+                last_in_phase = (
+                    lp.path_courses.filter(phase_number=phase_number)
+                    .order_by('-position')
+                    .first()
+                )
+                new_position = last_in_phase.position + 1
+                # Shift all courses after this phase down by 1
+                lp.path_courses.filter(position__gte=new_position).update(
+                    position=models.F('position') + 1
+                )
+            elif position is not None:
+                # Insert at explicit position — shift existing courses down
                 new_position = position
                 lp.path_courses.filter(position__gte=new_position).update(
                     position=models.F('position') + 1
                 )
+            else:
+                # Append at end
+                last = lp.path_courses.order_by('-position').first()
+                new_position = (last.position + 1) if last else 1
 
-            item = LearningPathCourse.objects.create(
+            LearningPathCourse.objects.create(
                 learning_path=lp,
                 course_id=course_id,
                 position=new_position,
+                phase_number=phase_number,
                 is_manually_added=True,
             )
 

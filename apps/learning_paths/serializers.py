@@ -66,6 +66,7 @@ class LearningPathCourseItemSerializer(serializers.ModelSerializer):
             'id',
             'course',
             'position',
+            'phase_number',
             'is_completed',
             'completed_at',
             'is_manually_added',

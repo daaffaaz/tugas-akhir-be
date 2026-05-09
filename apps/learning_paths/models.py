@@ -98,6 +98,11 @@ class LearningPathCourse(models.Model):
         related_name='learning_path_items',
     )
     position = models.PositiveSmallIntegerField()
+    phase_number = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text='Phase this course belongs to. Null means manually added without a specific phase.',
+    )
     is_completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
     is_manually_added = models.BooleanField(default=False)
