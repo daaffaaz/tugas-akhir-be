@@ -8,15 +8,24 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv()) + [  # noqa: F40
 ]
 
 
-CORS_ALLOWED_ORIGINS = [
+# Browser origins allowed to call this API (OAuth / credentialed fetch from local Next.js hits prod API).
+_cors_fallback = (
     'https://ta-persona-learn.vercel.app',
     'https://ta-be-persona-learn.vercel.app',
-]
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+)
+_env_cors = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(list(_cors_fallback) + _env_cors))
 CORS_ALLOW_ALL_ORIGINS = False
 
-CSRF_TRUSTED_ORIGINS = [
+_csrf_fallback = (
     'https://ta-persona-learn.vercel.app',
-]
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+)
+_env_csrf = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(list(_csrf_fallback) + _env_csrf))
 
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
