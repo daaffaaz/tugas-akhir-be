@@ -10,7 +10,7 @@ Dokumentasi endpoint-endpoint yang perlu diimplementasi atau diintegrasikan oleh
 
 | Method | Endpoint | Fungsi |
 |--------|----------|--------|
-| `POST` | `/api/rag/learning-paths/{id}/courses/add/` | Tambah 1 course dari katalog |
+| `POST` | `/api/rag/learning-paths/{id}/courses/add/` | Tambah 1 course dari katalog (support fase spesifik) |
 | `PUT` | `/api/learning-paths/{id}/bulk-update/` | Bulk update semua courses (add/remove/reorder) |
 | `PATCH` | `/api/rag/learning-paths/{id}/courses/reorder/` | Reorder urutan courses |
 
@@ -31,7 +31,9 @@ Dokumentasi endpoint-endpoint yang perlu diimplementasi atau diintegrasikan oleh
 
 **`POST /api/rag/learning-paths/{learning_path_id}/courses/add/`**
 
-Menambah satu course dari katalog ke dalam learning path. Mendukung insert di posisi tertentu — course lain yang ada di posisi >= nilai yang diberikan akan otomatis digeser ke bawah.
+Menambah satu course dari katalog ke dalam learning path. Mendukung dua mode:
+- **Mode fase** — course disisipkan di akhir fase tertentu, course setelahnya digeser otomatis
+- **Mode tambahan** — course ditambahkan di paling akhir tanpa fase (muncul sebagai "course tambahan")
 
 **Auth:** Bearer Token (required)
 
@@ -40,14 +42,48 @@ Menambah satu course dari katalog ke dalam learning path. Mendukung insert di po
 ```json
 {
   "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "position": 3
+  "phase_number": 2
 }
 ```
 
 | Field | Type | Required | Keterangan |
 |-------|------|----------|------------|
 | `course_id` | UUID | Ya | UUID course dari katalog |
-| `position` | integer (>= 1) | Tidak | Posisi insert. Jika tidak diisi, course di-append di akhir |
+| `phase_number` | integer (>= 1) | Tidak | Nomor fase tujuan. Course disisipkan di akhir fase tersebut. Jika tidak diisi, course ditambah di paling akhir tanpa fase |
+| `position` | integer (>= 1) | Tidak | Posisi insert manual. Diabaikan jika `phase_number` diisi |
+
+> **Prioritas:** `phase_number` > `position` > append di akhir
+
+#### Cara mendapatkan `phase_number`
+
+Setiap course di response learning path sekarang memiliki field `phase_number`. Gunakan nilai tersebut untuk mengetahui fase mana yang tersedia.
+
+```json
+// GET /api/learning-paths/{id}/ → courses[]
+{
+  "id": "uuid-lp-course-item",
+  "position": 3,
+  "phase_number": 2,        // ← gunakan nilai ini
+  "course": { ... }
+}
+```
+
+#### Contoh: Tambah ke Fase 2
+
+```json
+{
+  "course_id": "550e8400-e29b-41d4-a716-446655440000",
+  "phase_number": 2
+}
+```
+
+#### Contoh: Tambah sebagai course tambahan (tanpa fase)
+
+```json
+{
+  "course_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
 
 #### Response `200 OK`
 
@@ -390,6 +426,7 @@ Mengembalikan ringkasan progress user secara keseluruhan — cocok untuk halaman
 | `id` | UUID | ID item — gunakan ini untuk toggle-complete |
 | `course` | object | Detail course |
 | `position` | integer | Urutan dalam learning path |
+| `phase_number` | integer/null | Nomor fase. `null` berarti course tambahan tanpa fase |
 | `is_completed` | boolean | Status selesai |
 | `completed_at` | datetime/null | Waktu selesai |
 | `is_manually_added` | boolean | `true` jika ditambah manual user, `false` jika dari AI |
@@ -421,12 +458,20 @@ Mengembalikan ringkasan progress user secara keseluruhan — cocok untuk halaman
 
 ## Panduan Penggunaan untuk Frontend
 
-### Skenario: User menambah course dari halaman katalog
+### Skenario: User menambah course ke fase spesifik
+
+1. Fetch learning path detail → tampilkan daftar fase yang tersedia dari `courses[].phase_number` (distinct values, exclude null)
+2. User pilih course dari katalog → dapat `course_id`
+3. User pilih fase tujuan → dapat `phase_number`
+4. Panggil `POST /api/rag/learning-paths/{id}/courses/add/` dengan `course_id` + `phase_number`
+5. Response berisi learning path terbaru dengan course sudah masuk di fase yang dipilih — update state UI dari response
+
+### Skenario: User menambah course sebagai tambahan (tanpa fase)
 
 1. User browse katalog → dapat `course_id`
-2. Panggil `POST /api/rag/learning-paths/{id}/courses/add/` dengan `course_id`
-3. Jika ingin insert di posisi tertentu, sertakan `position`
-4. Response langsung berisi learning path terbaru — update state UI dari response
+2. Panggil `POST /api/rag/learning-paths/{id}/courses/add/` hanya dengan `course_id` (tanpa `phase_number`)
+3. Course ditambahkan di paling akhir dengan `phase_number: null`
+4. Frontend bisa render course ini di group "Course Tambahan"
 
 ### Skenario: User drag-and-drop reorder courses
 
