@@ -2,10 +2,6 @@ from .base import *  # noqa: F403, F401
 
 DEBUG = False
 
-# Vercel is serverless — each invocation is stateless so persistent connections
-# cause stale transaction state across requests. Force a fresh connection per request.
-DATABASES['default']['CONN_MAX_AGE'] = 0  # noqa: F405
-
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv()) + [  # noqa: F405
     '.vercel.app',
     'ta-be-persona-learn.vercel.app',

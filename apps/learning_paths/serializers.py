@@ -107,8 +107,8 @@ class LearningPathDetailSerializer(serializers.ModelSerializer):
 
     def get_courses(self, obj):
         items = (
-            obj.path_courses
-            .prefetch_related('course__platform', 'course__tags')
+            obj.path_courses.select_related('course__platform')
+            .prefetch_related('course__tags')
             .order_by('position')
         )
         return LearningPathCourseItemSerializer(items, many=True).data
