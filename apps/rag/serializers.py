@@ -282,3 +282,12 @@ class LearningPathApplyReplacementRequestSerializer(serializers.Serializer):
         max_length=500,
         help_text='Alasan user mengganti course ini'
     )
+
+
+class LearningPathReorderRequestSerializer(serializers.Serializer):
+    """Serializer for PATCH /api/rag/learning-paths/{id}/courses/reorder/."""
+    course_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        min_length=1,
+        help_text='List course IDs dalam urutan baru. Frontend sudah kirim urutan yang benar.'
+    )
