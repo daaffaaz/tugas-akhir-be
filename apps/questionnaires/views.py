@@ -51,9 +51,13 @@ def _validate_answer_rows(rows: list[dict]) -> dict:
 
 
 class UserQuestionnaireView(APIView):
-    """POST: full submit (32 answers). PATCH: partial answer updates."""
+    """GET: fetch answers. POST: full submit (32 answers). PATCH: partial answer updates."""
 
     permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        answers = UserQuestionnaireAnswer.objects.filter(user=request.user).select_related('question')
+        return Response(UserQuestionnaireAnswerSerializer(answers, many=True).data)
 
     def post(self, request, *args, **kwargs):
         if request.user.questionnaire_completed_at:
