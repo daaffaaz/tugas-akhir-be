@@ -100,18 +100,21 @@ class LearningPathBulkUpdateView(APIView):
                 cid = row['course_id']
                 pos = row['position']
                 manual = row.get('is_manually_added', False)
+                phase = row.get('phase_number')
                 if cid in existing:
                     lpc = existing[cid]
                     lpc.position = pos
+                    lpc.phase_number = phase
                     if manual:
                         lpc.is_manually_added = True
-                    lpc.save(update_fields=['position', 'is_manually_added'])
+                    lpc.save(update_fields=['position', 'is_manually_added', 'phase_number'])
                 else:
                     LearningPathCourse.objects.create(
                         learning_path=path,
                         course_id=cid,
                         position=pos,
                         is_manually_added=manual,
+                        phase_number=phase,
                     )
 
         path.refresh_from_db()

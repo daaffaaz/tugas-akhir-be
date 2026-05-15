@@ -156,6 +156,7 @@ class BulkCourseItemSerializer(serializers.Serializer):
     course_id = serializers.UUIDField()
     position = serializers.IntegerField(min_value=1)
     is_manually_added = serializers.BooleanField(required=False, default=False)
+    phase_number = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class LearningPathBulkUpdateSerializer(serializers.Serializer):

@@ -649,11 +649,13 @@ class RAGLearningPathDeleteCourseView(APIView):
             item.replacement_reason = replacement_reason
             item.save(update_fields=['replaced_by', 'replacement_reason'])
             old_position = item.position
+            old_phase_number = item.phase_number
             item.delete()
             LearningPathCourse.objects.create(
                 learning_path=lp,
                 course_id=new_course_id,
                 position=old_position,
+                phase_number=old_phase_number,
                 is_manually_added=True,
             )
 
@@ -1101,12 +1103,14 @@ class RAGLearningPathApplyReplacementView(APIView):
             # Update the LearningPathCourse to point to new course
             # (delete old record, create new at same position)
             old_position = item.position
+            old_phase_number = item.phase_number
             item.delete()
 
             LearningPathCourse.objects.create(
                 learning_path=lp,
                 course_id=new_course_id,
                 position=old_position,
+                phase_number=old_phase_number,
                 is_manually_added=True,
             )
 
