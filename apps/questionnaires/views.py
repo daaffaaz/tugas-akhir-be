@@ -15,31 +15,45 @@ from .serializers import (
 
 
 class QuestionListView(generics.ListAPIView):
-    """GET /api/questions/ — list all questionnaire questions in order."""
+    """GET /api/questions/ — list active questionnaire questions in order."""
 
-    queryset = Question.objects.all()
+    queryset = Question.objects.filter(is_active=True)
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
 
 
 def _validate_answer_rows(rows: list[dict]) -> dict:
-    """Validate full submission: one row per question, options must match options_json keys."""
-    expected = Question.objects.count()
-    if expected == 0:
-        raise ValidationError('No questions configured. Run import_questions first.')
-    if len(rows) != expected:
+    """Validate full submission: one row per question, options must match options_json keys.
+
+    Accepts:
+      - 14 answers (new v14 flow)
+      - 32 answers (old v32 flow, for users re-taking questionnaire)
+    """
+    active_qs = Question.objects.filter(is_active=True)
+    total_qs = Question.objects.count()
+    expected_active = active_qs.count()
+
+    if len(rows) == expected_active:
+        # New user flow — validate against active questions only
+        questions = {q.id: q for q in active_qs}
+    elif len(rows) == total_qs:
+        # Old user re-take flow — validate against all questions
+        questions = {q.id: q for q in Question.objects.all()}
+    else:
         raise ValidationError(
-            {'detail': f'Expected exactly {expected} answers, got {len(rows)}.'},
+            {'detail': f'Expected {expected_active} answers (new) or {total_qs} (old), got {len(rows)}.'},
         )
 
+    # Check for duplicate question IDs
     qids = [r['question_id'] for r in rows]
     if len(set(qids)) != len(qids):
         raise ValidationError({'detail': 'Duplicate question_id in payload.'})
 
-    questions = {q.id: q for q in Question.objects.filter(id__in=qids)}
-    if len(questions) != expected:
+    # Ensure all submitted question IDs are valid
+    if len(questions) != len(rows):
         raise ValidationError({'detail': 'Invalid or incomplete set of question ids.'})
 
+    # Validate each answer_option against question's options_json
     for r in rows:
         q = questions[r['question_id']]
         opt = r['answer_option']
@@ -51,7 +65,7 @@ def _validate_answer_rows(rows: list[dict]) -> dict:
 
 
 class UserQuestionnaireView(APIView):
-    """GET: fetch answers. POST: full submit (32 answers). PATCH: partial answer updates."""
+    """GET: fetch answers. POST: full submit (14 or 32 answers). PATCH: partial answer updates."""
 
     permission_classes = [IsAuthenticated]
 

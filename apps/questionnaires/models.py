@@ -12,10 +12,14 @@ class Question(models.Model):
     input_type = models.CharField(max_length=64, blank=True)
     options_json = models.JSONField()
     variable_key = models.CharField(max_length=128, blank=True)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'questions'
         ordering = ['order_number']
+        indexes = [
+            models.Index(fields=['is_active', 'order_number']),
+        ]
 
     def __str__(self):
         return f'{self.order_number}. {self.question_text[:50]}'
