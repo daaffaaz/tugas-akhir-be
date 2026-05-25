@@ -33,11 +33,90 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Level Computation — 3-Signal Weighted Scoring
+# ─────────────────────────────────────────────────────────────────────────────
+
+PROGRAMMING_FAMILIARITY_SCORES = {
+    'A': 0.00,   # never → Beginner
+    'B': 0.25,   # rarely → Beginner-Lower Intermediate
+    'C': 0.55,   # weekly → Intermediate
+    'D': 1.00,   # daily_pro → Advanced
+}
+
+DOMAIN_COMFORT_SCORES = {
+    'A': 0.00,   # not_familiar → Beginner
+    'B': 0.25,   # theoretical_only → Beginner-Lower Intermediate
+    'C': 0.40,   # light_practice → Lower Intermediate
+    'D': 0.70,   # proficient → Intermediate-Upper Intermediate
+    'E': 1.00,   # professional → Advanced
+}
+
+FORMAL_PREPARATION_SCORES = {
+    'A': 0.00,   # none → Beginner
+    'B': 0.35,   # basic_school → Lower Intermediate
+    'C': 0.60,   # portfolio_small → Intermediate
+    'D': 1.00,   # work_experience → Advanced
+}
+
+LEVEL_WEIGHTS = {
+    'programming_familiarity': 0.35,
+    'domain_comfort':          0.40,
+    'formal_preparation':      0.25,
+}
+
+
+def _compute_level(answers_map: dict) -> str:
+    """
+    Hitung level user dari 3-signal weighted average (Proposal v3).
+
+    Args:
+        answers_map: dict mapping variable_key -> answer_option string (e.g. 'A', 'B', ...)
+
+    Returns:
+        Level string: 'Beginner' | 'Lower Intermediate' | 'Intermediate' | 'Advanced'
+
+    Level Buckets:
+        0.00 – 0.35  → Beginner
+        0.35 – 0.55  → Lower Intermediate
+        0.55 – 0.75  → Intermediate
+        0.75 – 1.00  → Advanced
+    """
+    s1 = PROGRAMMING_FAMILIARITY_SCORES.get(
+        answers_map.get('programming_familiarity', 'A'), 0.0
+    )
+    s2 = DOMAIN_COMFORT_SCORES.get(
+        answers_map.get('domain_comfort', 'A'), 0.0
+    )
+    s3 = FORMAL_PREPARATION_SCORES.get(
+        answers_map.get('formal_preparation', 'A'), 0.0
+    )
+
+    score = (
+        s1 * LEVEL_WEIGHTS['programming_familiarity'] +
+        s2 * LEVEL_WEIGHTS['domain_comfort'] +
+        s3 * LEVEL_WEIGHTS['formal_preparation']
+    )
+
+    if score <= 0.35:
+        return 'Beginner'
+    elif score <= 0.55:
+        return 'Lower Intermediate'
+    elif score <= 0.75:
+        return 'Intermediate'
+    else:
+        return 'Advanced'
+
 
 def _build_user_profile(user, topic: str) -> dict:
     """
     Assemble a user profile dict from UserPreferences + UserQuestionnaireAnswer.
     Used as context for the RAG prompt.
+
+    Level computation uses 3-signal weighted scoring (Proposal v3):
+      - programming_familiarity (35%)
+      - domain_comfort         (40%)
+      - formal_preparation      (25%)
     """
     try:
         prefs = user.preferences  # related_name='preferences' di UserPreferences FK
@@ -49,8 +128,8 @@ def _build_user_profile(user, topic: str) -> dict:
             'weekly_hours': prefs.weekly_hours or None,
             'material_format': prefs.material_format or '',
             'theory_practice': prefs.theory_practice or '',
-            'target_role': prefs.target_role or '',
             'main_goal': prefs.main_goal or '',
+            'certification_importance': '',
         }
     except (UserPreferences.DoesNotExist, AttributeError):
         profile = {
@@ -61,8 +140,8 @@ def _build_user_profile(user, topic: str) -> dict:
             'weekly_hours': None,
             'material_format': '',
             'theory_practice': '',
-            'target_role': '',
             'main_goal': '',
+            'certification_importance': '',
         }
 
     # Extract answers from questionnaire
@@ -73,15 +152,21 @@ def _build_user_profile(user, topic: str) -> dict:
         .order_by('question__order_number')
     )
 
-    # Build a readable summary of answers
+    # Build answer_map: variable_key → answer_option string
+    answer_map: dict = {}
     answer_lines = []
     for ans in answers:
         q = ans.question
         answer_lines.append(f"- {q.variable_key or q.question_text[:60]}: {ans.answer_option}")
+        if q.variable_key:
+            answer_map[q.variable_key] = ans.answer_option
 
     profile['_answers'] = answer_lines
 
-    # Extract variable_key answers into structured profile
+    # Compute level from 3-signal weighted scoring (v3)
+    profile['level'] = _compute_level(answer_map)
+
+    # Map questionnaire answers to profile fields
     for ans in answers:
         key = ans.question.variable_key
         if not key:
@@ -92,8 +177,6 @@ def _build_user_profile(user, topic: str) -> dict:
             profile.setdefault('current_skills', []).append(val)
         elif key in ('goals', 'target_skills', 'learning_goals'):
             profile.setdefault('goals', []).append(val)
-        elif key in ('level', 'course_level', 'difficulty_preference'):
-            profile['level'] = val
         elif key == 'budget_idr':
             try:
                 profile['budget'] = int(val.replace(',', '').replace('IDR', '').strip())
@@ -104,6 +187,16 @@ def _build_user_profile(user, topic: str) -> dict:
                 profile['weekly_hours'] = int(val)
             except (ValueError, AttributeError):
                 pass
+        elif key == 'certification_importance':
+            profile['certification_importance'] = val
+        elif key in ('level', 'course_level', 'difficulty_preference',
+                     'programming_familiarity', 'domain_comfort', 'formal_preparation'):
+            # These are handled by _compute_level above; skip redundant assignment
+            pass
+        else:
+            # Fallback: map any other variable_key as-is
+            if key not in profile:
+                profile[key] = val
 
     return profile
 

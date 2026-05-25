@@ -71,6 +71,7 @@ def build_user_profile_text(
     budget,  # Can be int, str, or None
     weekly_hours,  # Can be str (e.g. "<4") or None
     additional_context: str = '',
+    certification_importance: str = '',
 ) -> str:
     """Build a concise user profile string for the prompt."""
     # Handle budget: can be int or string like "<500k"
@@ -87,6 +88,9 @@ def build_user_profile_text(
         f"Weekly Study Hours: {weekly_hours or 'Not specified'}",
         f"Budget: {budget_str}",
     ]
+
+    if certification_importance:
+        lines.append(f"Certification Preference: {certification_importance}")
 
     if additional_context:
         lines.append(f"Additional Context from User: {additional_context}")
@@ -112,6 +116,7 @@ def assemble_prompt(
         budget=user_profile.get('budget', None),
         weekly_hours=user_profile.get('weekly_hours', None),
         additional_context=user_profile.get('additional_context', ''),
+        certification_importance=user_profile.get('certification_importance', ''),
     )
 
     courses_context = courses_to_context(courses_metadata)

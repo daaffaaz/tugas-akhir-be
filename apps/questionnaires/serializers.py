@@ -14,6 +14,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             'input_type',
             'options_json',
             'variable_key',
+            'is_active',
         )
 
 
