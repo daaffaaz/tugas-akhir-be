@@ -22,6 +22,7 @@ class Course(models.Model):
     external_id = models.CharField(max_length=255, blank=True, db_index=True)
     title = models.CharField(max_length=500)
     instructor = models.CharField(max_length=255, blank=True)
+    author = models.CharField(max_length=255, blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     reviews_count = models.IntegerField(default=0)
     rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)

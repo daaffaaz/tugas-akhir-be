@@ -224,6 +224,14 @@ class Command(BaseCommand):
         if instructor.upper() == 'N/A':
             instructor = ''
 
+        author = _row_text(row, 'author')
+        if author.upper() == 'N/A':
+            author = ''
+
+        thumbnail_url = _row_text(row, 'thumbnail url', 'thumbnail_url')
+        if thumbnail_url.upper() == 'N/A':
+            thumbnail_url = ''
+
         what_you_learn = row.get('what_you_learn') or ''
         if str(what_you_learn).strip().upper() == 'N/A':
             what_you_learn = ''
@@ -239,6 +247,8 @@ class Command(BaseCommand):
         return {
             'title': title[:500],
             'instructor': instructor[:255],
+            'author': author[:255],
+            'thumbnail_url': thumbnail_url,
             # Normalize free/unknown price to 0 so max_price=0 can match free courses.
             'price': price if price is not None else Decimal('0'),
             'reviews_count': reviews_count,
