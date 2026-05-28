@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.badges.serializers import BadgeSerializer
+from apps.badges.services import evaluate_course_for_badges
 from apps.courses.models import Course
 
 from .models import LearningPath, LearningPathCourse
@@ -186,4 +188,18 @@ class LearningPathCourseToggleCompleteView(APIView):
         lpc.completed_at = timezone.now() if lpc.is_completed else None
         lpc.save(update_fields=['is_completed', 'completed_at'])
 
-        return Response(LearningPathCourseItemSerializer(lpc).data)
+        badge_payload = {'awarded': [], 'already_owned': []}
+        if lpc.is_completed:
+            result = evaluate_course_for_badges(
+                user=request.user,
+                course=lpc.course,
+                learning_path=lpc.learning_path,
+            )
+            badge_payload = {
+                'awarded': BadgeSerializer(result['awarded'], many=True).data,
+                'already_owned': BadgeSerializer(result['already_owned'], many=True).data,
+            }
+
+        data = LearningPathCourseItemSerializer(lpc).data
+        data['badges'] = badge_payload
+        return Response(data)
