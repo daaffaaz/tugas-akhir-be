@@ -1,0 +1,231 @@
+{
+  "title": "Questionnaire v14 — Daftar Kuesioner (Proposal v3)",
+  "version": "14",
+  "total_questions": 14,
+  "sections": [
+    {
+      "name": "DEMOGRAFI",
+      "questions": [
+        {
+          "order": 1,
+          "variable_key": "age_group",
+          "question_text": "Berapa usia Anda saat ini?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "< 18 th",
+            "B": "18-24 th",
+            "C": "25-34 th",
+            "D": "35-44 th",
+            "E": "> 45 th"
+          },
+          "is_active": true
+        },
+        {
+          "order": 2,
+          "variable_key": "education_level",
+          "question_text": "Apa tingkat pendidikan formal terakhir Anda?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "SMA/SMK",
+            "B": "D3/D4",
+            "C": "S1 (Sarjana)",
+            "D": "S2/S3",
+            "E": "Lainnya"
+          },
+          "is_active": true
+        },
+        {
+          "order": 3,
+          "variable_key": "educational_background_relevance",
+          "question_text": "Apakah jurusan pendidikan Anda berkaitan dengan IT/Komputer?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Ya, Sangat Terkait (IT/SI/Ilkom)",
+            "B": "Agak Terkait (Teknik Elektro/Matematika)",
+            "C": "Tidak Terkait (Sosial/Ekonomi/Sastra)"
+          },
+          "is_active": true
+        },
+        {
+          "order": 4,
+          "variable_key": "employment_status",
+          "question_text": "Apa status pekerjaan utama Anda saat ini?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Pelajar/Mahasiswa",
+            "B": "Fresh Graduate (Jobseeker)",
+            "C": "Karyawan (Non-IT)",
+            "D": "Karyawan (IT)",
+            "E": "Freelancer"
+          },
+          "is_active": true
+        }
+      ]
+    },
+    {
+      "name": "LEVEL MEASUREMENT",
+      "questions": [
+        {
+          "order": 5,
+          "variable_key": "programming_familiarity",
+          "question_text": "Seberapa sering Anda menulis kode / script dalam pekerjaan/hobi Anda?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Tidak pernah → Beginner",
+            "B": "Kadang-kadang (1-2x sebulan) → Beginner-Lower Intermediate",
+            "C": "Rutin (1-2x seminggu) → Intermediate",
+            "D": "Harian / professional → Advanced"
+          },
+          "is_active": true
+        },
+        {
+          "order": 6,
+          "variable_key": "domain_comfort",
+          "question_text": "Sebelum mengikuti program ini, seberapa nyaman Anda dengan bidang yang Anda tuju? (Pilih yang paling sesuai)",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Belum pernah sama sekali / tidak tahu apa-apa → Beginner",
+            "B": "Tahu teori dasarnya, tapi belum pernah praktik langsung → Beginner-Lower Intermediate",
+            "C": "Sudah pernah praktik/praktik ringan di bidang ini (proyek kecil, tugas kuliah, coba-coba sendiri) → Lower Intermediate",
+            "D": "Sudah cukup Mahir / sering praktik → Intermediate-Upper Intermediate",
+            "E": "Sudah profesional / bekerja di bidang ini → Advanced"
+          },
+          "is_active": true
+        },
+        {
+          "order": 7,
+          "variable_key": "formal_preparation",
+          "question_text": "Apa yang PALING menggambarkan persiapan Anda untuk belajar di bidang ini?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Belum pernah belajar formal di bidang ini sama sekali → Beginner (confirm)",
+            "B": "Pernah belajar dasar di sekolah/kursus online tapi belum mendalam → Lower Intermediate (confirm)",
+            "C": "Sudah punya portofolio kecil atau pernah lulus course → Intermediate (confirm)",
+            "D": "Sudah punya pengalaman kerja / freelance di bidang ini → Advanced (confirm)"
+          },
+          "is_active": true
+        }
+      ]
+    },
+    {
+      "name": "PREFERENCE & GOAL",
+      "questions": [
+        {
+          "order": 8,
+          "variable_key": "weekly_availability_hours",
+          "question_text": "Berapa jam REALISTIS yang bisa Anda alokasikan untuk belajar per minggu?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "< 3 jam (Sangat Sibuk)",
+            "B": "3 - 7 jam (Santai)",
+            "C": "8 - 14 jam (Moderat)",
+            "D": "15 - 25 jam (Intensif)",
+            "E": "> 25 jam (Full Time)"
+          },
+          "is_active": true
+        },
+        {
+          "order": 9,
+          "variable_key": "learning_modality_preference",
+          "question_text": "Format materi mana yang paling cepat membuat Anda paham?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Video (Visual & Audio)",
+            "B": "Teks/Artikel (Membaca & Skimming)",
+            "C": "Interactive Code (Langsung ketik di browser)",
+            "D": "Project (Langsung praktek kasus)"
+          },
+          "is_active": true
+        },
+        {
+          "order": 10,
+          "variable_key": "practicality_ratio",
+          "question_text": "Bagaimana komposisi Teori vs Praktek yang Anda inginkan?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Banyak Teori (70%), Sedikit Praktek (30%)",
+            "B": "Seimbang (50% - 50%)",
+            "C": "Dominan Praktek/Hands-on (80%)"
+          },
+          "is_active": true
+        },
+        {
+          "order": 11,
+          "variable_key": "target_role",
+          "question_text": "Spesifiknya, role IT apa yang Anda incar?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Software Dev (Web/Mobile)",
+            "B": "Data Scientist/Analyst",
+            "C": "DevOps/Cloud",
+            "D": "UI/UX Designer",
+            "E": "Belum Tahu / General"
+          },
+          "is_active": true
+        },
+        {
+          "order": 12,
+          "variable_key": "primary_motivation",
+          "question_text": "Apa tujuan utama mengikuti program ini?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Cari Kerja Baru (Career Switch)",
+            "B": "Promosi/Upskilling di kerjaan sekarang",
+            "C": "Freelance/Side hustle",
+            "D": "Akademis/Kuliah",
+            "E": "Hobi semata"
+          },
+          "is_active": true
+        },
+        {
+          "order": 13,
+          "variable_key": "monetary_constraint",
+          "question_text": "Berapa budget maksimal untuk pembelian tools/lisensi software (jika ada)?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Rp 0 (Harus gratis/Open source)",
+            "B": "< Rp 500rb",
+            "C": "Tidak Masalah (Ada budget khusus)"
+          },
+          "is_active": true
+        },
+        {
+          "order": 14,
+          "variable_key": "certification_importance",
+          "question_text": "Seberapa penting sertifikat kelulusan bagi Anda?",
+          "input_type": "Single Choice",
+          "options_json": {
+            "A": "Sangat Penting (Untuk CV/Syarat)",
+            "B": "Biasa saja (Nice to have)",
+            "C": "Tidak Penting (Yang penting ilmunya)"
+          },
+          "is_active": true
+        }
+      ]
+    }
+  ],
+  "changelog": {
+    "v14": [
+      "HAPUS 18 pertanyaan lama (is_active=false):",
+      "  - Kompetensi Teknis: os_familiarity, cli_proficiency, programming_logic_score, git_competency, problem_solving_independence, english_technical_proficiency, project_portfolio_count, data_literacy_score",
+      "  - Ketersediaan Waktu: learning_session_span, preferred_time_slot, target_completion_duration, login_frequency_intent",
+      "  - Gaya Belajar: learning_curve_steepness, social_dependency_level, assessment_type_preference",
+      "  - Minat & Hardware: interest_frontend_ui, interest_data_math, interest_infrastructure, negative_constraint, hardware_constraint, bandwidth_constraint",
+      "",
+      "TAMBAH 3 pertanyaan Level (multi-signal):",
+      "  - programming_familiarity (order 5) — Signal #1: aktivitas coding aktual",
+      "  - domain_comfort (order 6) — Signal #2: comfort di domain spesifik",
+      "  - formal_preparation (order 7) — Signal #3: validasi dari pendidikan/formal",
+      "",
+      "KEEP (tetap sama, is_active=true):",
+      "  - Demografi: age_group, education_level, educational_background_relevance, employment_status (orders 1-4)",
+      "  - Preference: weekly_availability_hours, learning_modality_preference, practicality_ratio (orders 8-10)",
+      "  - Goal: target_role, primary_motivation, certification_importance (orders 11, 12, 14)",
+      "  - Monetary: monetary_constraint (order 13)",
+      "",
+      "Level computation formula:",
+      "  level_score = normalize(programming_familiarity * 0.35 + domain_comfort * 0.40 + formal_preparation * 0.25)",
+      "  Beginner (0.00-0.35) | Lower Intermediate (0.35-0.55) | Intermediate (0.55-0.75) | Advanced (0.75-1.00)"
+    ]
+  }
+}

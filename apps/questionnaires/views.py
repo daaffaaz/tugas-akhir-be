@@ -64,6 +64,105 @@ def _validate_answer_rows(rows: list[dict]) -> dict:
     return questions
 
 
+class ComputeLevelView(APIView):
+    """
+    POST /api/questionnaires/compute-level/
+    Compute learner level from 3-signal weighted scoring (Proposal v3).
+    """
+
+    permission_classes = [AllowAny]
+
+    PROGRAMMING_FAMILIARITY_SCORES = {
+        'A': 0.00, 'B': 0.25, 'C': 0.55, 'D': 1.00,
+    }
+    DOMAIN_COMFORT_SCORES = {
+        'A': 0.00, 'B': 0.25, 'C': 0.40, 'D': 0.70, 'E': 1.00,
+    }
+    FORMAL_PREPARATION_SCORES = {
+        'A': 0.00, 'B': 0.35, 'C': 0.60, 'D': 1.00,
+    }
+    LEVEL_WEIGHTS = {
+        'programming_familiarity': 0.35,
+        'domain_comfort':          0.40,
+        'formal_preparation':      0.25,
+    }
+    LEVEL_BUCKETS = [
+        (0.35, 'Beginner'),
+        (0.55, 'Lower Intermediate'),
+        (0.75, 'Intermediate'),
+    ]
+    LEVEL_FALLBACK = 'Advanced'
+
+    SIGNAL_LABELS = {
+        'programming_familiarity': {
+            'A': 'Beginner', 'B': 'Beginner-Lower Intermediate',
+            'C': 'Intermediate', 'D': 'Advanced',
+        },
+        'domain_comfort': {
+            'A': 'Beginner', 'B': 'Beginner-Lower Intermediate',
+            'C': 'Lower Intermediate', 'D': 'Intermediate-Upper Intermediate', 'E': 'Advanced',
+        },
+        'formal_preparation': {
+            'A': 'Beginner', 'B': 'Lower Intermediate',
+            'C': 'Intermediate', 'D': 'Advanced',
+        },
+    }
+
+    def post(self, request):
+        answers = request.data.get('answers', [])
+        if not answers:
+            return Response({'detail': 'No answers provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        answers_map = {
+            a.get('variable_key'): a.get('answer_option')
+            for a in answers
+            if a.get('variable_key') and a.get('answer_option')
+        }
+
+        s1 = self.PROGRAMMING_FAMILIARITY_SCORES.get(
+            answers_map.get('programming_familiarity', 'A'), 0.0
+        )
+        s2 = self.DOMAIN_COMFORT_SCORES.get(
+            answers_map.get('domain_comfort', 'A'), 0.0
+        )
+        s3 = self.FORMAL_PREPARATION_SCORES.get(
+            answers_map.get('formal_preparation', 'A'), 0.0
+        )
+
+        level_score = (
+            s1 * self.LEVEL_WEIGHTS['programming_familiarity'] +
+            s2 * self.LEVEL_WEIGHTS['domain_comfort'] +
+            s3 * self.LEVEL_WEIGHTS['formal_preparation']
+        )
+
+        level = self.LEVEL_FALLBACK
+        for threshold, label in self.LEVEL_BUCKETS:
+            if level_score <= threshold:
+                level = label
+                break
+
+        score_maps = {
+            'programming_familiarity': self.PROGRAMMING_FAMILIARITY_SCORES,
+            'domain_comfort':          self.DOMAIN_COMFORT_SCORES,
+            'formal_preparation':      self.FORMAL_PREPARATION_SCORES,
+        }
+
+        signals = {}
+        for key in ('programming_familiarity', 'domain_comfort', 'formal_preparation'):
+            value = answers_map.get(key, 'A')
+            signals[key] = {
+                'value': value,
+                'score': score_maps[key].get(value, 0.0),
+                'label': self.SIGNAL_LABELS[key].get(value, 'Beginner'),
+            }
+
+        return Response({
+            'level': level,
+            'level_score': round(level_score, 2),
+            'signals': signals,
+        })
+
+
 class UserQuestionnaireView(APIView):
     """GET: fetch answers. POST: full submit (14 or 32 answers). PATCH: partial answer updates."""
 

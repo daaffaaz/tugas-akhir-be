@@ -1,6 +1,6 @@
-# PRD: Restrukturirani Kuesioner — dari 32Q ke 13Q
+# PRD: Restrukturirani Kuesioner — dari 32Q ke 14Q
 
-**Versi Proposal:** v3.1 (fix: hapus target_role)
+**Versi Proposal:** v3 (Final)
 **Tanggal:** 2026-05-25
 **Status:** Ready for seeding — import via `python manage.py import_questions --clear`
 
@@ -9,7 +9,7 @@
 ## Daftar Isi
 
 1. [Ringkasan Perubahan](#1-ringkasan-perubahan)
-2. [Struktur 13 Pertanyaan Baru](#2-struktur-13-pertanyaan-baru)
+2. [Struktur 14 Pertanyaan Baru](#2-struktur-14-pertanyaan-baru)
 3. [Logika Level: 3-Signal Weighted Scoring](#3-logika-level-3-signal-weighted-scoring)
 4. [Adjustment Backend](#4-adjustment-backend)
 5. [Adjustment Frontend](#5-adjustment-frontend)
