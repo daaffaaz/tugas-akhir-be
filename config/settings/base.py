@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'apps.learning_paths.apps.LearningPathsConfig',
     'apps.rag.apps.RagConfig',
     'apps.badges.apps.BadgesConfig',
+    'apps.recommendations.apps.RecommendationsConfig',
 ]
 
 MIDDLEWARE = [

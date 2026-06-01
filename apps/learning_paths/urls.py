@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    GenerateFromCareerView,
     LearningPathBulkUpdateView,
     LearningPathCourseToggleCompleteView,
     LearningPathDetailView,
@@ -10,6 +11,7 @@ from .views import (
 
 urlpatterns = [
     path('learning-paths/progress/', UserGlobalProgressView.as_view(), name='learning-paths-global-progress'),
+    path('learning-paths/generate-from-career/', GenerateFromCareerView.as_view(), name='learning-paths-generate-from-career'),
     path('learning-paths/', LearningPathListCreateView.as_view(), name='learning-paths-list'),
     path(
         'learning-paths/<uuid:pk>/bulk-update/',

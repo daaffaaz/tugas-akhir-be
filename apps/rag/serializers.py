@@ -22,6 +22,11 @@ class RAGGenerateRequestSerializer(serializers.Serializer):
         required=False, allow_null=True, max_length=50,
         help_text='Preferred course level (Beginner/Intermediate/Advanced)'
     )
+    career_focus = serializers.CharField(
+        required=False, allow_blank=True, max_length=200,
+        help_text='Karier target (opsional). Jika diisi, akan di-inject ke prompt sebagai '
+                  '"User ingin fokus ke karier: {career_focus}".'
+    )
 
     def validate_topic(self, value):
         if len(value.strip()) < 3:

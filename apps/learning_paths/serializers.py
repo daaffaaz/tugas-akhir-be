@@ -162,3 +162,23 @@ class BulkCourseItemSerializer(serializers.Serializer):
 class LearningPathBulkUpdateSerializer(serializers.Serializer):
     title = serializers.CharField(required=False, allow_blank=True)
     courses = BulkCourseItemSerializer(many=True)
+
+
+class GenerateFromCareerRequestSerializer(serializers.Serializer):
+    """Serializer for POST /api/learning-paths/generate-from-career/."""
+    career_focus = serializers.CharField(
+        max_length=200,
+        help_text='Karier target yang dipilih dari rekomendasi (mis. "Data Analyst").'
+    )
+    based_on_courses = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        help_text='Opsional: list UUID course yang sudah selesai (untuk konsistensi FE). '
+                  'BE sudah bisa akses via auth, jadi field ini tidak wajib diproses.'
+    )
+
+    def validate_career_focus(self, value):
+        cleaned = value.strip()
+        if len(cleaned) < 3:
+            raise serializers.ValidationError("career_focus minimal 3 karakter.")
+        return cleaned
