@@ -11,6 +11,7 @@ urlpatterns = [
     path('api/', include('apps.learning_paths.urls')),
     path('api/', include('apps.rag.urls')),
     path('api/', include('apps.badges.urls')),
+    path('api/', include('apps.recommendations.urls')),
     path('api/drf-auth/', include('rest_framework.urls')),
 ]
 

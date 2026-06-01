@@ -254,6 +254,71 @@ def _save_roadmap_to_db(user, topic: str, roadmap_dict: dict) -> LearningPath:
     return learning_path
 
 
+def _generate_roadmap_for_user(
+    user,
+    topic: str,
+    level_pref: str | None = None,
+    budget_pref=None,
+    extra_context: str = '',
+) -> tuple[LearningPath, dict, list[dict], float]:
+    """
+    Shared helper that runs the full RAG roadmap generation pipeline for a user.
+
+    Steps:
+    1. Build user profile from DB
+    2. Override level/budget if provided
+    3. Inject extra_context (e.g. career_focus) into user_profile.additional_context
+    4. Retrieve courses from FAISS
+    5. Call GPT-4o to generate the roadmap
+    6. Save to DB and prefetch relations
+    7. Return (learning_path, retrieval_info, retrieved_courses_meta, top_score)
+
+    Raises:
+        ValueError: no courses retrieved OR all generated course IDs invalid
+        Exception: LLM or DB failure
+    """
+    user_profile = _build_user_profile(user, topic)
+
+    if level_pref:
+        user_profile['level'] = level_pref
+    if budget_pref:
+        user_profile['budget'] = budget_pref
+    if extra_context:
+        existing = user_profile.get('additional_context', '') or ''
+        user_profile['additional_context'] = (
+            f"{existing} {extra_context}".strip()
+        )
+
+    courses, top_score = retrieve_courses(topic, user_profile)
+    if not courses:
+        raise ValueError(
+            'No courses found matching your topic. '
+            'The search index may not be built yet. '
+            'Contact support if this persists.'
+        )
+
+    roadmap_dict, retrieval_info = generate_roadmap(
+        topic=topic,
+        user_profile=user_profile,
+        courses_metadata=courses,
+        top_score=top_score,
+    )
+
+    learning_path = _save_roadmap_to_db(user, topic, roadmap_dict)
+
+    learning_path = (
+        LearningPath.objects
+        .filter(id=learning_path.id)
+        .prefetch_related(
+            'path_courses__course__platform',
+            'path_courses__course__tags',
+        )
+        .first()
+    )
+
+    return learning_path, retrieval_info, courses, top_score
+
+
 class RAGRoadmapGenerateView(APIView):
     """
     POST /api/rag/generate-roadmap/
@@ -269,76 +334,42 @@ class RAGRoadmapGenerateView(APIView):
         topic = data['topic']
         level_pref = data.get('level') or request.data.get('level')
         budget_pref = data.get('budget_idr') or request.data.get('budget_idr')
+        career_focus = (data.get('career_focus') or '').strip()
 
-        logger.info(f"[RAG] Generate roadmap for topic='{topic}' by user={request.user.id}")
+        logger.info(
+            f"[RAG] Generate roadmap for topic='{topic}' "
+            f"career_focus='{career_focus}' by user={request.user.id}"
+        )
 
-        # Build user profile from DB
-        user_profile = _build_user_profile(request.user, topic)
+        extra_context = ''
+        if career_focus:
+            extra_context = f"User ingin fokus ke karier: {career_focus}."
 
-        # Override with request-level preferences if provided
-        if level_pref:
-            user_profile['level'] = level_pref
-        if budget_pref:
-            user_profile['budget'] = budget_pref
-
-        # Retrieve relevant courses from FAISS
-        courses, top_score = retrieve_courses(topic, user_profile)
-
-        if not courses:
-            return Response(
-                {
-                    'detail': (
-                        'No courses found matching your topic. '
-                        'The search index may not be built yet. '
-                        'Contact support if this persists.'
-                    )
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        logger.info(f"[RAG] Retrieved {len(courses)} courses, top_score={top_score:.3f}")
-
-        # Generate roadmap via GPT-4o
         try:
-            roadmap_dict, retrieval_info = generate_roadmap(
-                topic=topic,
-                user_profile=user_profile,
-                courses_metadata=courses,
-                top_score=top_score,
+            learning_path, retrieval_info, courses, top_score = (
+                _generate_roadmap_for_user(
+                    user=request.user,
+                    topic=topic,
+                    level_pref=level_pref,
+                    budget_pref=budget_pref,
+                    extra_context=extra_context,
+                )
             )
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error(f"[RAG] Generation failed: {e}")
+            logger.error(f"[RAG] Generation/save failed: {e}")
             return Response(
                 {'detail': f'Roadmap generation failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-        # Save to database
-        try:
-            learning_path = _save_roadmap_to_db(request.user, topic, roadmap_dict)
-        except Exception as e:
-            logger.error(f"[RAG] Failed to save roadmap to DB: {e}")
-            return Response(
-                {'detail': f'Failed to save roadmap: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        # Prefetch for serializer
-        learning_path = (
-            LearningPath.objects
-            .filter(id=learning_path.id)
-            .prefetch_related(
-                'path_courses__course__platform',
-                'path_courses__course__tags',
-            )
-            .first()
-        )
 
         response_data = LearningPathDetailSerializer(learning_path).data
         response_data['_rag_meta'] = {
             'courses_retrieved': retrieval_info.get('courses_retrieved', len(courses)),
             'top_similarity_score': retrieval_info.get('top_similarity_score', top_score),
             'retrieval_method': retrieval_info.get('retrieval_method', 'semantic search'),
+            'career_focus': career_focus or None,
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED)

@@ -1,3 +1,5 @@
+import logging
+
 from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
@@ -11,9 +13,11 @@ from rest_framework.views import APIView
 from apps.badges.serializers import BadgeSerializer
 from apps.badges.services import evaluate_course_for_badges
 from apps.courses.models import Course
+from apps.rag.views import _generate_roadmap_for_user
 
 from .models import LearningPath, LearningPathCourse
 from .serializers import (
+    GenerateFromCareerRequestSerializer,
     LearningPathBulkUpdateSerializer,
     LearningPathCourseItemSerializer,
     LearningPathCreateSerializer,
@@ -21,6 +25,8 @@ from .serializers import (
     LearningPathListSerializer,
     UserGlobalProgressSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LearningPathListCreateView(generics.ListCreateAPIView):
@@ -203,3 +209,61 @@ class LearningPathCourseToggleCompleteView(APIView):
         data = LearningPathCourseItemSerializer(lpc).data
         data['badges'] = badge_payload
         return Response(data)
+
+
+class GenerateFromCareerView(APIView):
+    """
+    POST /api/learning-paths/generate-from-career/
+
+    Body: { "career_focus": "Data Analyst", "based_on_courses": ["uuid", ...] (opsional) }
+
+    Creates a new learning path whose topic is the chosen career. Internally reuses
+    the same RAG pipeline as POST /api/rag/generate-roadmap/.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = GenerateFromCareerRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        career_focus = data['career_focus']
+
+        logger.info(
+            f"[career] Generate learning path from career='{career_focus}' "
+            f"by user={request.user.id}"
+        )
+
+        extra_context = f"User ingin fokus ke karier: {career_focus}."
+
+        try:
+            learning_path, retrieval_info, courses, top_score = (
+                _generate_roadmap_for_user(
+                    user=request.user,
+                    topic=career_focus,
+                    level_pref=None,
+                    budget_pref=None,
+                    extra_context=extra_context,
+                )
+            )
+        except ValueError as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            logger.error(f"[career] Generation/save failed: {e}")
+            return Response(
+                {'detail': f'Generation failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        response_data = LearningPathDetailSerializer(learning_path).data
+        response_data['_rag_meta'] = {
+            'courses_retrieved': retrieval_info.get('courses_retrieved', len(courses)),
+            'top_similarity_score': retrieval_info.get('top_similarity_score', top_score),
+            'retrieval_method': retrieval_info.get('retrieval_method', 'semantic search'),
+            'career_focus': career_focus,
+            'source': 'generate-from-career',
+        }
+        return Response(response_data, status=status.HTTP_201_CREATED)
