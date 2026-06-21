@@ -14,8 +14,17 @@ EMBEDDING_BATCH_SIZE: int = config('EMBEDDING_BATCH_SIZE', default=100, cast=int
 # --- LLM Config ---
 OPENAI_MODEL: str = config('OPENAI_MODEL', default='gpt-4o')
 OPENAI_API_KEY: str = config('OPENAI_API_KEY')
+OPENROUTER_API_KEY: str = config('OPENROUTER_API_KEY', default='')
 MAX_TOKENS: int = config('MAX_TOKENS', default=4000, cast=int)
 TEMPERATURE: float = config('TEMPERATURE', default=0.3, cast=float)
+
+# --- LLM-as-Judge Models (OpenRouter) ---
+JUDGE_MODELS: list[str] = config(
+    'JUDGE_MODELS',
+    default='deepseek/deepseek-v4-flash,qwen/qwen3-235b-a22b-2507,anthropic/claude-3-haiku',
+).split(',')
+JUDGE_TEMPERATURE: float = config('JUDGE_TEMPERATURE', default=0.0, cast=float)
+JUDGE_MAX_TOKENS: int = config('JUDGE_MAX_TOKENS', default=2000, cast=int)
 
 # --- Index Paths ---
 BASE_DIR = Path(__file__).resolve().parent.parent.parent

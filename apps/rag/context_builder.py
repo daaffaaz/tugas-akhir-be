@@ -1,6 +1,9 @@
+import logging
 import textwrap
 
-from apps.rag import config, knowledge_graph, prompts
+from apps.rag import config, knowledge_graph, prompts, reranker
+
+logger = logging.getLogger(__name__)
 
 
 def course_to_text(course_meta: dict) -> str:
