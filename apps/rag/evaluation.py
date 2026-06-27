@@ -53,6 +53,8 @@ class RetrievalReport:
     hit_rate_at_k: float
     precision_at_k: float
     recall_at_k: float
+    mrr_at_10: float
+    ndcg_at_10: float
     queries_evaluated: int
     per_query: list[dict] = field(default_factory=list)
 
@@ -178,6 +180,8 @@ def _evaluate_single_query(test_case: TestCase) -> dict[str, Any]:
             "precision": 0.0,
             "recall": 0.0,
             "hit_rate": 0.0,
+            "mrr": 0.0,
+            "ndcg": 0.0,
             "hit_ids": [],
         }
 
@@ -185,15 +189,38 @@ def _evaluate_single_query(test_case: TestCase) -> dict[str, Any]:
     total_retrieved = len(retrieved)
     total_gt = len(gt_ids)
 
+    # MRR@10 — reciprocal rank of first relevant result in top-10
+    mrr = 0.0
+    retrieved_list = [c.get("course_id") for c in retrieved if c.get("course_id")]
+    for i, cid in enumerate(retrieved_list[:10], start=1):
+        if cid in gt_ids:
+            mrr = 1.0 / i
+            break
+
+    # NDCG@10 — discounted cumulative gain of top-10
+    dcg = sum(1.0 / math.log2(i + 1) for i, cid in enumerate(retrieved_list[:10], start=1)
+              if cid in gt_ids)
+    ideal_count = min(10, len(gt_ids))
+    idcg = sum(1.0 / math.log2(i + 1) for i in range(1, ideal_count + 1))
+    ndcg = dcg / idcg if idcg > 0 else 0.0
+
+    # Standard IR definitions:
+    #   Precision = |relevant ∩ retrieved| / |retrieved|   (how clean is the result set)
+    #   Recall    = |relevant ∩ retrieved| / |GT|         (how much of GT did we cover)
+    precision = relevant_retrieved / total_retrieved if total_retrieved else 0.0
+    recall = relevant_retrieved / total_gt if total_gt else 0.0
+
     return {
         "query": test_case.query,
         "hit": relevant_retrieved > 0,
         "relevant_retrieved": relevant_retrieved,
         "total_retrieved": total_retrieved,
         "total_ground_truth": total_gt,
-        "precision": relevant_retrieved / total_retrieved if total_retrieved else 0.0,
-        "recall": relevant_retrieved / total_gt if total_gt else 0.0,
+        "precision": precision,
+        "recall": recall,
         "hit_rate": 1.0 if relevant_retrieved > 0 else 0.0,
+        "mrr": mrr,
+        "ndcg": ndcg,
         "hit_ids": list(retrieved_ids & gt_ids),
     }
 
@@ -231,11 +258,15 @@ def evaluate_retrieval(
     hit_rate = sum(r["hit_rate"] for r in results) / total_queries
     precision = sum(r["precision"] for r in results) / total_queries
     recall = sum(r["recall"] for r in results) / total_queries
+    mrr = sum(r["mrr"] for r in results) / total_queries
+    ndcg = sum(r["ndcg"] for r in results) / total_queries
 
     return RetrievalReport(
         hit_rate_at_k=hit_rate,
         precision_at_k=precision,
         recall_at_k=recall,
+        mrr_at_10=mrr,
+        ndcg_at_10=ndcg,
         queries_evaluated=total_queries,
         per_query=results,
     )
@@ -369,7 +400,9 @@ def print_report(
         for name, score, target in [
             ("Hit Rate@K", retrieval.hit_rate_at_k, 0.80),
             ("Precision@K", retrieval.precision_at_k, 0.70),
-            ("Recall@K", retrieval.recall_at_k, 0.60),
+            ("Recall@K", retrieval.recall_at_k, 0.90),
+            ("MRR@10", retrieval.mrr_at_10, 0.80),
+            ("NDCG@10", retrieval.ndcg_at_10, 0.75),
         ]:
             s = status_label(score, target)
             s_colored = color(s, s == "PASS")
@@ -383,6 +416,7 @@ def print_report(
             lines.append(
                 f"    {r['query']:<45} "
                 f"P={r['precision']:.2f}  R={r['recall']:.2f}  "
+                f"MRR={r['mrr']:.2f}  NDCG={r['ndcg']:.2f}  "
                 f"Hit={'Y' if r['hit'] else 'N'}"
             )
         if len(retrieval.per_query) > 10:
@@ -419,7 +453,9 @@ def print_report(
         all_pass = (
             retrieval.hit_rate_at_k >= 0.80
             and retrieval.precision_at_k >= 0.70
-            and retrieval.recall_at_k >= 0.60
+            and retrieval.recall_at_k >= 0.90
+            and retrieval.mrr_at_10 >= 0.80
+            and retrieval.ndcg_at_10 >= 0.75
             and groundedness.score == 1.0
         )
         verdict = "ALL METRICS PASSED" if all_pass else "SOME METRICS NEED IMPROVEMENT"

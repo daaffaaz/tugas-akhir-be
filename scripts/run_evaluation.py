@@ -111,7 +111,9 @@ def main():
         for name, score, target in [
             ("Hit Rate@K", retrieval.hit_rate_at_k, 0.80),
             ("Precision@K", retrieval.precision_at_k, 0.70),
-            ("Recall@K", retrieval.recall_at_k, 0.60),
+            ("Recall@K", retrieval.recall_at_k, 0.90),
+            ("MRR@10", retrieval.mrr_at_10, 0.80),
+            ("NDCG@10", retrieval.ndcg_at_10, 0.75),
         ]:
             print_bar(f"{name}: {score:.1%} (target: {target:.1%})", score)
 
@@ -121,6 +123,7 @@ def main():
             print(
                 f"    {r['query']:<45} "
                 f"P={r['precision']:.2f}  R={r['recall']:.2f}  "
+                f"MRR={r['mrr']:.2f}  NDCG={r['ndcg']:.2f}  "
                 f"Hit={'Y' if r['hit'] else 'N'}"
             )
         if len(retrieval.per_query) > 10:
@@ -168,6 +171,8 @@ def main():
             "hit_rate_at_k": retrieval.hit_rate_at_k if retrieval else None,
             "precision_at_k": retrieval.precision_at_k if retrieval else None,
             "recall_at_k": retrieval.recall_at_k if retrieval else None,
+            "mrr_at_10": retrieval.mrr_at_10 if retrieval else None,
+            "ndcg_at_10": retrieval.ndcg_at_10 if retrieval else None,
             "queries_evaluated": retrieval.queries_evaluated if retrieval else None,
             "per_query": retrieval.per_query if retrieval else [],
         },
@@ -187,7 +192,9 @@ def main():
         below_target = (
             retrieval.hit_rate_at_k < 0.80
             or retrieval.precision_at_k < 0.70
-            or retrieval.recall_at_k < 0.60
+            or retrieval.recall_at_k < 0.90
+            or retrieval.mrr_at_10 < 0.80
+            or retrieval.ndcg_at_10 < 0.75
         )
         if below_target:
             print("\n  WARNING: Some metrics are below target thresholds.")
