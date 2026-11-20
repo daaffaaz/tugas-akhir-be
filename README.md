@@ -55,7 +55,7 @@ Django 5 project with **Django REST Framework**, **JWT (SimpleJWT)**, **PostgreS
 | PUT | `/learning-paths/<uuid>/bulk-update/` | Replace path structure transactionally. |
 | PATCH | `/learning-paths/courses/<uuid>/toggle-complete/` | Toggle completion (`LearningPathCourse` id). |
 
-JWT required for protected routes. Middleware returns `403` if the user is authenticated but has not completed the onboarding questionnaire (except auth, listing questions, and submitting the questionnaire).
+JWT required for protected routes. Middleware returns `403` if the user is authenticated but has not completed the onboarding questionnaire (except for auth, listing questions, and submitting the questionnaire).
 
 Browsable API login (session) for development: `/api/drf-auth/`.
 
